@@ -47,33 +47,7 @@ pub enum ShutdownMode {
     Immediate,
 }
 
-/// Parses a duration string like "30s", "5m", "1h" into a `Duration`.
-///
-/// Supported units: `s` (seconds), `m` (minutes), `h` (hours), `ms` (milliseconds).
-pub fn parse_duration(s: &str) -> Result<Duration, String> {
-    let s = s.trim();
-    if s.is_empty() {
-        return Err("Empty duration string".to_string());
-    }
-
-    let split_idx = s
-        .char_indices()
-        .find(|(_, c)| c.is_ascii_alphabetic())
-        .map(|(idx, _)| idx)
-        .ok_or_else(|| format!("No unit found in duration string: '{s}'"))?;
-
-    let (num_str, unit) = s.split_at(split_idx);
-    let num: u64 = num_str
-        .parse()
-        .map_err(|_| format!("Invalid number in duration string: '{num_str}'"))?;
-
-    match unit {
-        "ms" => Ok(Duration::from_millis(num)),
-        "s" => Ok(Duration::from_secs(num)),
-        "m" => Ok(Duration::from_secs(num * 60)),
-        "h" => Ok(Duration::from_secs(num * 3600)),
-        _ => Err(format!(
-            "Unknown duration unit: '{unit}' (expected ms, s, m, or h)"
-        )),
-    }
+/// Internal utility to parse durations using `humantime`.
+pub fn parse_duration(s: &str) -> Result<Duration, humantime::DurationError> {
+    s.parse::<humantime::Duration>().map(|d| d.into())
 }

@@ -2,6 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use syn::ImplItem;
 
 use crate::validation::FsmStructure;
 
@@ -16,25 +17,28 @@ pub fn generate(fsm: &FsmStructure, original_impl: &syn::ItemImpl) -> TokenStrea
     let run_impl = generate_run_impl(fsm);
     let handle_impl = generate_handle_impl(fsm);
 
-    // Keep the original methods from the impl block
-    let original_methods: Vec<_> = original_impl.items.iter()
+    // Keep the original methods but strip FSM-specific attributes
+    let original_methods: Vec<_> = original_impl
+        .items
+        .iter()
         .filter_map(|item| {
-            if let syn::ImplItem::Fn(method) = item {
-                Some(&method.attrs)
-                    .filter(|attrs| {
-                        // Only keep methods that aren't event handlers or timeout handlers
-                        !attrs.iter().any(|attr| {
-                            attr.path().is_ident("event") || 
-                            attr.path().is_ident("on_timeout") ||
-                            attr.path().is_ident("state_timeout")
-                        })
-                    })
-                    .map(|_| method)
+            if let ImplItem::Fn(method) = item {
+                let mut stripped_method = method.clone();
+                stripped_method.attrs.retain(|attr| {
+                    !attr.path().is_ident("event")
+                        && !attr.path().is_ident("state_timeout")
+                        && !attr.path().is_ident("on_timeout")
+                });
+                Some(quote! {
+                    #stripped_method
+                })
             } else {
                 None
             }
         })
         .collect();
+
+    let fsm_name = &fsm.fsm_name;
 
     quote! {
         #state_enum
@@ -43,11 +47,10 @@ pub fn generate(fsm: &FsmStructure, original_impl: &syn::ItemImpl) -> TokenStrea
         #handle_struct
         #task_struct
 
-        impl #fsm_struct {
+        impl #fsm_name {
             #spawn_impl
             #run_impl
 
-            // Original user methods
             #(#original_methods)*
         }
 
@@ -55,32 +58,52 @@ pub fn generate(fsm: &FsmStructure, original_impl: &syn::ItemImpl) -> TokenStrea
     }
 }
 
-/// Generate the State enum.
 fn generate_state_enum(fsm: &FsmStructure) -> TokenStream {
     let states: Vec<_> = fsm.states.iter().map(|s| &s.name).collect();
-    
+
+    // Deduplicate states for struct generation
+    let mut unique_states = std::collections::HashSet::new();
+    let state_structs: Vec<_> = fsm
+        .states
+        .iter()
+        .filter(|s| unique_states.insert(&s.name))
+        .map(|s| {
+            let name = &s.name;
+            quote! {
+                #[derive(Debug, Clone, Copy, Default)]
+                pub struct #name;
+                impl From<#name> for State {
+                    fn from(_: #name) -> Self {
+                        State::#name
+                    }
+                }
+            }
+        })
+        .collect();
+
     quote! {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum State {
             #(#states,)*
         }
+
+        #(#state_structs)*
     }
 }
 
-/// Generate the Event enum.
 fn generate_event_enum(fsm: &FsmStructure) -> TokenStream {
-    let variants: Vec<TokenStream> = fsm.events.iter().map(|event| {
-        let event_name = &event.name;
-        if let Some(ref payload_type) = event.payload_type {
-            quote! {
-                #event_name(#payload_type),
+    let variants: Vec<TokenStream> = fsm
+        .events
+        .iter()
+        .map(|event| {
+            let event_name = &event.name;
+            if let Some(ref payload_type) = event.payload_type {
+                quote! { #event_name(#payload_type), }
+            } else {
+                quote! { #event_name, }
             }
-        } else {
-            quote! {
-                #event_name,
-            }
-        }
-    }).collect();
+        })
+        .collect();
 
     quote! {
         #[derive(Debug, Clone)]
@@ -90,11 +113,9 @@ fn generate_event_enum(fsm: &FsmStructure) -> TokenStream {
     }
 }
 
-/// Generate the FSM struct.
 fn generate_fsm_struct(fsm: &FsmStructure) -> TokenStream {
     let fsm_name = &fsm.fsm_name;
     let context_type = &fsm.context_type;
-
     quote! {
         pub struct #fsm_name {
             state: State,
@@ -103,11 +124,10 @@ fn generate_fsm_struct(fsm: &FsmStructure) -> TokenStream {
     }
 }
 
-/// Generate the Handle struct.
 fn generate_handle_struct(fsm: &FsmStructure) -> TokenStream {
     let handle_name = format_ident!("{}Handle", fsm.fsm_name);
-
     quote! {
+        #[derive(Clone)]
         pub struct #handle_name {
             event_tx: tokio::sync::mpsc::Sender<Event>,
             shutdown_tx: tokio::sync::watch::Sender<Option<tokio_fsm_core::ShutdownMode>>,
@@ -116,7 +136,6 @@ fn generate_handle_struct(fsm: &FsmStructure) -> TokenStream {
     }
 }
 
-/// Generate the Task struct.
 fn generate_task_struct(fsm: &FsmStructure) -> TokenStream {
     let task_name = format_ident!("{}Task", fsm.fsm_name);
     let context_type = &fsm.context_type;
@@ -131,16 +150,23 @@ fn generate_task_struct(fsm: &FsmStructure) -> TokenStream {
         impl #task_name {
             pub async fn await_task(self) -> Result<#context_type, #error_type> {
                 self.handle.await.map_err(|e| {
-                    // Convert JoinError to user error type if possible
-                    // For now, we'll need to handle this based on user's Error type
                     panic!("FSM task panicked: {:?}", e)
                 })?
+            }
+        }
+
+        impl std::future::Future for #task_name {
+            type Output = Result<#context_type, #error_type>;
+            fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+                use std::future::Future;
+                std::pin::Pin::new(&mut self.handle).poll(cx).map(|res| {
+                    res.map_err(|e| panic!("FSM task panicked: {:?}", e)).and_then(|r| r)
+                })
             }
         }
     }
 }
 
-/// Generate the spawn implementation.
 fn generate_spawn_impl(fsm: &FsmStructure) -> TokenStream {
     let fsm_name = &fsm.fsm_name;
     let handle_name = format_ident!("{}Handle", fsm_name);
@@ -150,7 +176,7 @@ fn generate_spawn_impl(fsm: &FsmStructure) -> TokenStream {
     let channel_size = fsm.channel_size;
 
     quote! {
-        pub fn spawn(context: #context_type) -> (#fsm_name, #handle_name, #task_name) {
+        pub fn spawn(context: #context_type) -> (#handle_name, #task_name) {
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(#channel_size);
             let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(None);
             let (state_tx, state_rx) = tokio::sync::watch::channel(State::#initial_state);
@@ -160,172 +186,113 @@ fn generate_spawn_impl(fsm: &FsmStructure) -> TokenStream {
                 context,
             };
 
-            let handle = tokio::spawn(async move {
+            let join_handle = tokio::task::spawn(async move {
                 fsm.run(event_rx, shutdown_rx, state_tx).await
             });
 
             (
-                fsm,
                 #handle_name {
                     event_tx,
                     shutdown_tx,
                     state_rx,
                 },
-                #task_name { handle },
+                #task_name { handle: join_handle },
             )
         }
     }
 }
 
-/// Generate the run implementation with event loop.
 fn generate_run_impl(fsm: &FsmStructure) -> TokenStream {
     let context_type = &fsm.context_type;
     let error_type = &fsm.error_type;
-    
-    // Generate event match arms
     let event_arms = generate_event_match_arms(fsm);
-    
-    // Check if we have timeout handlers
-    let has_timeout_handler = fsm.handlers.iter().any(|h| h.is_timeout_handler);
-    let has_state_timeout = fsm.handlers.iter().any(|h| h.state_timeout.is_some());
-    
-    // Find timeout handler method name
-    let timeout_handler_name = fsm.handlers.iter()
-        .find(|h| h.is_timeout_handler)
-        .map(|h| &h.method.sig.ident);
-    
-    // Find state timeout duration (simplified - use first one found)
-    let timeout_duration = fsm.handlers.iter()
-        .find_map(|h| h.state_timeout.as_ref().map(|st| st.duration.value()));
-    
-    if has_timeout_handler && has_state_timeout && timeout_handler_name.is_some() && timeout_duration.is_some() {
-        let handler_name = timeout_handler_name.unwrap();
-        let duration_str = timeout_duration.unwrap();
-        
+
+    let timeout_handler = fsm.handlers.iter().find(|h| h.is_timeout_handler);
+    let timeout_handler_call = if let Some(h) = timeout_handler {
+        let name = &h.method.sig.ident;
         quote! {
-            async fn run(
-                mut self,
-                mut events: tokio::sync::mpsc::Receiver<Event>,
-                mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
-                state_tx: tokio::sync::watch::Sender<State>,
-            ) -> Result<#context_type, #error_type> {
-                use std::time::Duration;
-                use std::pin::Pin;
-                use tokio::time::{Sleep, Instant};
-                
-                let duration = tokio_fsm_core::parse_duration(#duration_str)
-                    .expect("Invalid timeout duration");
-                let mut timeout: Option<Pin<Box<Sleep>>> = None;
-                
-                loop {
-                    tokio::select! {
-                        Some(event) = events.recv() => {
-                            match (&self.state, event) {
-                                #(#event_arms)*
-                                (state, event) => {
-                                    // Invalid transition - log and ignore
-                                    #[cfg(feature = "tracing")]
-                                    tracing::warn!("Invalid transition: {:?} with {:?}", state, event);
-                                }
-                            }
-                        }
-                        
-                        _ = async {
-                            if let Some(ref mut t) = timeout {
-                                t.as_mut().await
-                            } else {
-                                std::future::pending().await
-                            }
-                        }, if timeout.is_some() => {
-                            // Timeout occurred
-                            let transition = self.#handler_name().await;
-                            let new_state = transition.into_state();
-                            self.state = new_state;
-                            let _ = state_tx.send(self.state);
-                            timeout = None; // Clear timeout
-                        }
-                        
-                        Ok(()) = shutdown.changed() => {
-                            match *shutdown.borrow() {
-                                Some(tokio_fsm_core::ShutdownMode::Graceful) => {
-                                    // Process remaining events
-                                    while let Ok(event) = events.try_recv() {
-                                        match (&self.state, event) {
-                                            #(#event_arms)*
-                                            _ => {}
-                                        }
-                                    }
-                                    break;
-                                }
-                                Some(tokio_fsm_core::ShutdownMode::Immediate) => break,
-                                None => {}
-                            }
-                        }
-                    }
-                }
-                Ok(self.context)
-            }
+            let transition = self.#name().await;
+            self.state = transition.into_state().into();
+            let _ = state_tx.send(self.state);
         }
     } else {
-        // No timeout handling
-        quote! {
-            async fn run(
-                mut self,
-                mut events: tokio::sync::mpsc::Receiver<Event>,
-                mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
-                state_tx: tokio::sync::watch::Sender<State>,
-            ) -> Result<#context_type, #error_type> {
-                loop {
-                    tokio::select! {
-                        Some(event) = events.recv() => {
-                            match (&self.state, event) {
-                                #(#event_arms)*
-                                (state, event) => {
-                                    // Invalid transition - log and ignore
-                                    #[cfg(feature = "tracing")]
-                                    tracing::warn!("Invalid transition: {:?} with {:?}", state, event);
-                                }
-                            }
-                        }
-                        
-                        Ok(()) = shutdown.changed() => {
-                            match *shutdown.borrow() {
-                                Some(tokio_fsm_core::ShutdownMode::Graceful) => {
-                                    // Process remaining events
-                                    while let Ok(event) = events.try_recv() {
-                                        match (&self.state, event) {
-                                            #(#event_arms)*
-                                            _ => {}
-                                        }
-                                    }
-                                    break;
-                                }
-                                Some(tokio_fsm_core::ShutdownMode::Immediate) => break,
-                                None => {}
+        quote! { /* No timeout handler */ }
+    };
+
+    quote! {
+        async fn run(
+            mut self,
+            mut events: tokio::sync::mpsc::Receiver<Event>,
+            mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
+            state_tx: tokio::sync::watch::Sender<State>,
+        ) -> Result<#context_type, #error_type> {
+            use std::pin::Pin;
+            use tokio::time::{Sleep, Instant};
+
+            let mut timeout: Option<Pin<Box<Sleep>>> = None;
+
+            loop {
+                tokio::select! {
+                    event = events.recv() => {
+                        let Some(event) = event else { break };
+                        match (&self.state, event) {
+                            #(#event_arms)*
+                            (state, event) => {
+                                // Invalid transition - log and ignore
+                                // tracing::warn!("Invalid transition: {:?} with {:?}", state, event);
                             }
                         }
                     }
+
+                    _ = async {
+                        if let Some(ref mut t) = timeout {
+                            t.as_mut().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    }, if timeout.is_some() => {
+                        #timeout_handler_call
+                        timeout = None;
+                    }
+
+                    res = shutdown.changed() => {
+                        if res.is_err() { break; }
+                        let mode = *shutdown.borrow();
+                        match mode {
+                            Some(tokio_fsm_core::ShutdownMode::Graceful) => {
+                                while let Ok(event) = events.try_recv() {
+                                    match (&self.state, event) {
+                                        #(#event_arms)*
+                                        _ => {}
+                                    }
+                                }
+                                break;
+                            }
+                            Some(tokio_fsm_core::ShutdownMode::Immediate) => break,
+                            None => {}
+                        }
+                    }
                 }
-                Ok(self.context)
             }
+            Ok(self.context)
         }
     }
 }
 
-/// Generate match arms for state/event combinations.
 fn generate_event_match_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
     let mut arms = Vec::new();
-    
+
     for handler in &fsm.handlers {
         if let Some(ref event) = handler.event {
             let method_name = &handler.method.sig.ident;
             let event_name = &event.name;
-            
-            // Check if handler returns Result or just Transition
+
             let is_result = match &handler.method.sig.output {
                 syn::ReturnType::Type(_, ty) => {
                     if let syn::Type::Path(path) = ty.as_ref() {
-                        path.path.segments.last()
+                        path.path
+                            .segments
+                            .last()
                             .map(|seg| seg.ident == "Result")
                             .unwrap_or(false)
                     } else {
@@ -334,77 +301,70 @@ fn generate_event_match_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
                 }
                 syn::ReturnType::Default => false,
             };
-            
-            if let Some(ref _payload_type) = event.payload_type {
-                // Event with payload
-                if is_result {
-                    arms.push(quote! {
-                        (State::_, Event::#event_name(payload)) => {
-                            match self.#method_name(payload).await {
-                                Ok(transition) => {
-                                    let new_state = transition.into_state();
-                                    self.state = new_state;
-                                    let _ = state_tx.send(self.state);
-                                }
-                                Err(error_transition) => {
-                                    let new_state = error_transition.into_state();
-                                    self.state = new_state;
-                                    let _ = state_tx.send(self.state);
-                                }
-                            }
-                        }
-                    });
-                } else {
-                    arms.push(quote! {
-                        (State::_, Event::#event_name(payload)) => {
-                            let transition = self.#method_name(payload).await;
-                            let new_state = transition.into_state();
-                            self.state = new_state;
-                            let _ = state_tx.send(self.state);
-                        }
-                    });
+
+            let timeout_reset = if let Some(ref st) = handler.state_timeout {
+                let duration = &st.duration;
+                quote! {
+                    let d = tokio_fsm_core::parse_duration(#duration).expect("Invalid duration");
+                    timeout = Some(Box::pin(tokio::time::sleep(d)));
                 }
             } else {
-                // Event without payload
-                if is_result {
-                    arms.push(quote! {
-                        (State::_, Event::#event_name) => {
-                            match self.#method_name().await {
-                                Ok(transition) => {
-                                    let new_state = transition.into_state();
-                                    self.state = new_state;
-                                    let _ = state_tx.send(self.state);
-                                }
-                                Err(error_transition) => {
-                                    let new_state = error_transition.into_state();
-                                    self.state = new_state;
-                                    let _ = state_tx.send(self.state);
-                                }
-                            }
-                        }
-                    });
+                quote! { timeout = None; }
+            };
+
+            let arm_inner = if is_result {
+                let payload_call = if event.payload_type.is_some() {
+                    quote! { (payload) }
                 } else {
-                    arms.push(quote! {
-                        (State::_, Event::#event_name) => {
-                            let transition = self.#method_name().await;
-                            let new_state = transition.into_state();
-                            self.state = new_state;
+                    quote! { () }
+                };
+                quote! {
+                    match self.#method_name #payload_call .await {
+                        Ok(transition) => {
+                            self.state = transition.into_state().into();
                             let _ = state_tx.send(self.state);
+                            #timeout_reset
                         }
-                    });
+                        Err(transition) => {
+                            self.state = transition.into_state().into();
+                            let _ = state_tx.send(self.state);
+                            timeout = None;
+                        }
+                    }
                 }
-            }
+            } else {
+                let payload_call = if event.payload_type.is_some() {
+                    quote! { (payload) }
+                } else {
+                    quote! { () }
+                };
+                quote! {
+                    let transition = self.#method_name #payload_call .await;
+                    self.state = transition.into_state().into();
+                    let _ = state_tx.send(self.state);
+                    #timeout_reset
+                }
+            };
+
+            let payload_pattern = if event.payload_type.is_some() {
+                quote! { (payload) }
+            } else {
+                quote! {}
+            };
+
+            arms.push(quote! {
+                (_, Event::#event_name #payload_pattern) => {
+                    #arm_inner
+                }
+            });
         }
     }
-    
+
     arms
 }
 
-
-/// Generate the Handle implementation.
 fn generate_handle_impl(fsm: &FsmStructure) -> TokenStream {
     let handle_name = format_ident!("{}Handle", fsm.fsm_name);
-
     quote! {
         impl #handle_name {
             pub async fn send(&self, event: Event) -> Result<(), tokio::sync::mpsc::error::SendError<Event>> {

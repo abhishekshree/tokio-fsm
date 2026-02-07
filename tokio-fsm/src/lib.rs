@@ -1,12 +1,12 @@
 //! # tokio-fsm
 //!
-//! Compile-time generation of Tokio async finite state machines with explicit Rust behavior
-//! and zero runtime overhead.
+//! Compile-time generation of Tokio async finite state machines with explicit
+//! Rust behavior and zero runtime overhead.
 //!
 //! ## Example
 //!
 //! ```rust
-//! use tokio_fsm::{fsm, Transition};
+//! use tokio_fsm::{Transition, fsm};
 //!
 //! pub struct WorkerContext;
 //! pub enum WorkerError {}

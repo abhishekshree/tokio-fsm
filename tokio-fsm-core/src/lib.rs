@@ -41,9 +41,11 @@ impl<T> Transition<T> {
 /// Shutdown mode for graceful or immediate termination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShutdownMode {
-    /// Graceful shutdown: process remaining events in the queue before terminating.
+    /// Graceful shutdown: process remaining events in the queue before
+    /// terminating.
     Graceful,
-    /// Immediate shutdown: terminate immediately without processing remaining events.
+    /// Immediate shutdown: terminate immediately without processing remaining
+    /// events.
     Immediate,
 }
 

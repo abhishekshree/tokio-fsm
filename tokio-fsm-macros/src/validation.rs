@@ -1,9 +1,9 @@
 //! Validation logic for FSM structure.
 
-use darling::FromMeta;
-use petgraph::algo::has_path_connecting;
-use petgraph::graph::DiGraph;
 use std::collections::{HashMap, HashSet};
+
+use darling::FromMeta;
+use petgraph::{algo::has_path_connecting, graph::DiGraph};
 use syn::{Error, FnArg, GenericArgument, Ident, ImplItem, PathArguments, ReturnType, Type};
 
 use crate::attrs;
@@ -157,8 +157,8 @@ impl FsmStructure {
         for handler in &self.handlers {
             // For each handler, we assume it can be called from ANY state for now
             // Unless we implement state-specific event handlers in the future.
-            // For MVP, if a handler returns Transition<Target>, it creates an edge from ALL states to Target.
-            // This is a bit coarse but safe for reachability.
+            // For MVP, if a handler returns Transition<Target>, it creates an edge from ALL
+            // states to Target. This is a bit coarse but safe for reachability.
             for target in &handler.return_states {
                 let target_node = nodes.get(&target.name).ok_or_else(|| {
                     syn::Error::new_spanned(
@@ -176,8 +176,9 @@ impl FsmStructure {
         // Check reachability from initial state to all other states
         for (&state_name, &node) in &nodes {
             if !has_path_connecting(&graph, *initial_node, node, None) {
-                // Return a warning/error? For now, let's just make it a compile error if unreachable.
-                // In a real lib, we might want to allow it but warn.
+                // Return a warning/error? For now, let's just make it a compile error if
+                // unreachable. In a real lib, we might want to allow it but
+                // warn.
                 return Err(syn::Error::new_spanned(
                     state_name,
                     format!(
@@ -238,7 +239,8 @@ impl Handler {
     }
 }
 
-/// Extract state names from a return type (Transition<State> or Result<Transition<State>, Transition<State>>).
+/// Extract state names from a return type (Transition<State> or
+/// Result<Transition<State>, Transition<State>>).
 fn extract_return_states(output: &ReturnType) -> syn::Result<Vec<State>> {
     let return_type = match output {
         ReturnType::Type(_, ty) => ty.as_ref(),

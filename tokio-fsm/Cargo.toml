@@ -1,0 +1,39 @@
+[package]
+name = "tokio-fsm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+description = "Compile-time generation of Tokio async finite state machines with explicit Rust behavior and zero runtime engine"
+keywords = ["tokio", "async", "fsm", "state-machine", "proc-macro"]
+categories = [
+    "asynchronous",
+    "concurrency",
+    "development-tools::procedural-macro-helpers",
+]
+
+[dependencies]
+tokio-fsm-core = { path = "../tokio-fsm-core" }
+tokio-fsm-macros = { path = "../tokio-fsm-macros" }
+tokio = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[[example]]
+name = "worker"
+path = "../examples/worker.rs"
+
+[package.metadata.release]
+push = true
+sign-commit = false
+tag-name = "v{{version}}"
+tag-message = "Release {{version}}"
+pre-release-commit-message = "chore: release v{{version}}"
+push-remote = "origin"
+

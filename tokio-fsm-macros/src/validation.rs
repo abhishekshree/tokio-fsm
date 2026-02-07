@@ -253,33 +253,30 @@ fn extract_return_states(output: &ReturnType) -> syn::Result<Vec<State>> {
 }
 
 fn extract_states_recursive(ty: &Type, states: &mut Vec<State>) -> syn::Result<()> {
-    match ty {
-        Type::Path(path) => {
-            if let Some(segment) = path.path.segments.last() {
-                if segment.ident == "Transition" {
-                    if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                        for arg in &args.args {
-                            if let GenericArgument::Type(Type::Path(inner_path)) = arg {
-                                if let Some(state_seg) = inner_path.path.segments.last() {
-                                    states.push(State {
-                                        name: state_seg.ident.clone(),
-                                    });
-                                }
+    if let Type::Path(path) = ty {
+        if let Some(segment) = path.path.segments.last() {
+            if segment.ident == "Transition" {
+                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                    for arg in &args.args {
+                        if let GenericArgument::Type(Type::Path(inner_path)) = arg {
+                            if let Some(state_seg) = inner_path.path.segments.last() {
+                                states.push(State {
+                                    name: state_seg.ident.clone(),
+                                });
                             }
                         }
                     }
-                } else if segment.ident == "Result" {
-                    if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                        for arg in &args.args {
-                            if let GenericArgument::Type(inner_ty) = arg {
-                                extract_states_recursive(inner_ty, states)?;
-                            }
+                }
+            } else if segment.ident == "Result" {
+                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                    for arg in &args.args {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            extract_states_recursive(inner_ty, states)?;
                         }
                     }
                 }
             }
         }
-        _ => {}
     }
     Ok(())
 }

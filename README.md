@@ -11,7 +11,7 @@ Compile-time generation of Tokio async finite state machines with explicit Rust 
 - **Zero Runtime Overhead**: The macro generates idiomatic Rust code for the event loop—no trait objects or dynamic dispatch.
 - **Compile-time Validation**: Uses `petgraph` to verify state reachability and valid transitions at compile-time.
 - **State Timeouts**: Easily configure timeouts for specific states that trigger auto-transitions.
-- **Type-Safe Transitions**: Uses phantom state structs to ensure you only transition to valid states defined in your machine.
+- **Type-Safe Transitions**: Ensures you only transition to valid states defined in your machine.
 
 ## Quick Start
 
@@ -45,8 +45,8 @@ async fn main() {
     handle.send(Event::Start).await.unwrap();
     println!("Current state: {:?}", handle.current_state());
     
-    handle.shutdown_graceful().await;
-    let final_context = task.await_task().await.unwrap();
+    handle.shutdown_graceful();
+    let final_context = task.await.unwrap();
     println!("Total transitions: {}", final_context.count);
 }
 ```

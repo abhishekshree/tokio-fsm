@@ -50,7 +50,7 @@ impl WorkerFsm {
             .save(&job)
             .await
             .map(|_| Transition::to(Working))
-            .map_err(|e| Transition::to_with_data(Failed, e))
+            .map_err(|_| Transition::to(Failed))
     }
 
     #[event(Done)]
@@ -83,8 +83,8 @@ async fn main() {
     handle.send(Event::Done).await.unwrap();
 
     // Shutdown gracefully
-    handle.shutdown_graceful().await;
+    handle.shutdown_graceful();
 
     // Wait for task
-    let _ = task.await_task().await;
+    let _ = task.await;
 }

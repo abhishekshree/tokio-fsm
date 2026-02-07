@@ -7,8 +7,6 @@ use std::time::Duration;
 pub enum Transition<T> {
     /// Transition to a new state.
     To(T),
-    /// Transition to a new state with associated data.
-    ToWithData(T, Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl<T> Transition<T> {
@@ -17,24 +15,11 @@ impl<T> Transition<T> {
         Self::To(state)
     }
 
-    /// Create a transition to a new state with associated error data.
-    pub fn to_with_data<E>(state: T, error: E) -> Self
-    where
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        Self::ToWithData(state, Box::new(error))
-    }
-
-    /// Extract the target state, discarding any error data.
+    /// Extract the target state.
     pub fn into_state(self) -> T {
         match self {
-            Self::To(state) | Self::ToWithData(state, _) => state,
+            Self::To(state) => state,
         }
-    }
-
-    /// Check if this transition contains error data.
-    pub fn has_error(&self) -> bool {
-        matches!(self, Self::ToWithData(_, _))
     }
 }
 
@@ -50,6 +35,9 @@ pub enum ShutdownMode {
 }
 
 /// Internal utility to parse durations using `humantime`.
+///
+/// This is public for use by the proc macro, but not part of the stable API.
+#[doc(hidden)]
 pub fn parse_duration(s: &str) -> Result<Duration, humantime::DurationError> {
     s.parse::<humantime::Duration>().map(|d| d.into())
 }

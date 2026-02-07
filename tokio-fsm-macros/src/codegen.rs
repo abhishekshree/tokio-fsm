@@ -61,16 +61,13 @@ pub fn generate(fsm: &FsmStructure, original_impl: &syn::ItemImpl) -> TokenStrea
 fn generate_state_enum(fsm: &FsmStructure) -> TokenStream {
     let states: Vec<_> = fsm.states.iter().map(|s| &s.name).collect();
 
-    // Deduplicate states for struct generation
-    let mut unique_states = std::collections::HashSet::new();
     let state_structs: Vec<_> = fsm
         .states
         .iter()
-        .filter(|s| unique_states.insert(&s.name))
         .map(|s| {
             let name = &s.name;
             quote! {
-                #[derive(Debug, Clone, Copy, Default)]
+                #[derive(Debug, Clone, Copy)]
                 pub struct #name;
                 impl From<#name> for State {
                     fn from(_: #name) -> Self {
@@ -147,14 +144,6 @@ fn generate_task_struct(fsm: &FsmStructure) -> TokenStream {
             handle: tokio::task::JoinHandle<Result<#context_type, #error_type>>,
         }
 
-        impl #task_name {
-            pub async fn await_task(self) -> Result<#context_type, #error_type> {
-                self.handle.await.map_err(|e| {
-                    panic!("FSM task panicked: {:?}", e)
-                })?
-            }
-        }
-
         impl std::future::Future for #task_name {
             type Output = Result<#context_type, #error_type>;
             fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
@@ -227,7 +216,7 @@ fn generate_run_impl(fsm: &FsmStructure) -> TokenStream {
             state_tx: tokio::sync::watch::Sender<State>,
         ) -> Result<#context_type, #error_type> {
             use std::pin::Pin;
-            use tokio::time::{Sleep, Instant};
+            use tokio::time::Sleep;
 
             let mut timeout: Option<Pin<Box<Sleep>>> = None;
 
@@ -237,10 +226,7 @@ fn generate_run_impl(fsm: &FsmStructure) -> TokenStream {
                         let Some(event) = event else { break };
                         match (&self.state, event) {
                             #(#event_arms)*
-                            (state, event) => {
-                                // Invalid transition - log and ignore
-                                // tracing::warn!("Invalid transition: {:?} with {:?}", state, event);
-                            }
+                            _ => {}
                         }
                     }
 
@@ -375,11 +361,11 @@ fn generate_handle_impl(fsm: &FsmStructure) -> TokenStream {
                 self.event_tx.try_send(event)
             }
 
-            pub async fn shutdown_graceful(self) {
+            pub fn shutdown_graceful(self) {
                 let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Graceful));
             }
 
-            pub async fn shutdown_immediate(self) {
+            pub fn shutdown_immediate(self) {
                 let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Immediate));
             }
 

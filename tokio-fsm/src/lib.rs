@@ -25,5 +25,5 @@
 //! }
 //! ```
 
-pub use tokio_fsm_core::{ShutdownMode, Transition, parse_duration};
+pub use tokio_fsm_core::{ShutdownMode, Transition};
 pub use tokio_fsm_macros::fsm;

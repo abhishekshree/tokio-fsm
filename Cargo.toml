@@ -1,0 +1,34 @@
+[package]
+name = "tokio-fsm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "Compile-time generation of Tokio async finite state machines with explicit Rust behavior and zero runtime engine"
+license = "MIT"
+documentation = "https://docs.rs/tokio-fsm/"
+repository = "https://github.com/abhishekshree/tokio-fsm"
+readme = "README.md"
+authors = ["Abhishek Shree <abhishek.shree@outlook.com>"]
+
+keywords = ["tokio", "async", "fsm", "state-machine", "proc-macro"]
+
+categories = [
+    "asynchronous",
+    "concurrency",
+    "development-tools::procedural-macro-helpers",
+]
+
+
+[dependencies]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.release]
+push = true
+sign-commit = false
+tag-name = "v{{version}}"
+tag-message = "Release {{version}}"
+pre-release-commit-message = "chore: release v{{version}}"
+push-remote = "origin"

@@ -12,8 +12,8 @@ repository = "https://github.com/abhishekshree/tokio-fsm"
 readme = "README.md"
 
 [workspace.dependencies]
-tokio-fsm-core = { path = "tokio-fsm-core" }
-tokio-fsm-macros = { path = "tokio-fsm-macros" }
+tokio-fsm-core = { version = "0.1.0", path = "tokio-fsm-core" }
+tokio-fsm-macros = { version = "0.1.0", path = "tokio-fsm-macros" }
 
 tokio = { version = "1.0", features = ["full"] }
 thiserror = "2.0"

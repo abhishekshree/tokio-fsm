@@ -53,7 +53,7 @@ async fn main() {
 
 ## Comparisons
 
-See [examples/comparison.rs](examples/comparison.rs) for a side-by-side comparison of a manual implementation vs. the `tokio-fsm` way. The macro reduces boilerplate by ~70% and ensures safety through graph validation.
+See [tokio-fsm/examples/comparison.rs](tokio-fsm/examples/comparison.rs) for a side-by-side comparison of a manual implementation vs. the `tokio-fsm` way. The macro reduces boilerplate by ~70% and ensures safety through graph validation.
 
 ## Documentation
 

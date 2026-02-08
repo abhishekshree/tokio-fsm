@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-readme.workspace = true
+readme = "../README.md"
 
 description = "Compile-time generation of Tokio async finite state machines with explicit Rust behavior and zero runtime engine"
 keywords = ["tokio", "async", "fsm", "state-machine", "proc-macro"]
@@ -21,11 +21,3 @@ tokio-fsm-core = { workspace = true }
 tokio-fsm-macros = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
-
-[[example]]
-name = "worker"
-path = "../examples/worker.rs"
-
-[[example]]
-name = "comparison"
-path = "../examples/comparison.rs"

@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     # Skip forks since the token won't have write permissions.
     if: ${{ github.event.pull_request.head.repo.fork == false || github.event_name != 'pull_request' }}
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -30,4 +32,4 @@ jobs:
         with:
           github_token: ${{ secrets.CARGO_ASSIST_TOKEN || secrets.GITHUB_TOKEN }}
           # Keep flags aligned with CI behavior.
-          clippy_flags: "--all-targets --all-features --workspace -- -D warnings"
+          clippy_flags: "--all-targets --all-features --workspace"

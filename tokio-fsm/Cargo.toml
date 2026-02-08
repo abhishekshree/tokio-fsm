@@ -17,14 +17,10 @@ categories = [
 ]
 
 [dependencies]
-tokio-fsm-core = { path = "../tokio-fsm-core" }
-tokio-fsm-macros = { path = "../tokio-fsm-macros" }
+tokio-fsm-core = { workspace = true }
+tokio-fsm-macros = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [[example]]
 name = "worker"
@@ -33,11 +29,3 @@ path = "../examples/worker.rs"
 [[example]]
 name = "comparison"
 path = "../examples/comparison.rs"
-
-[package.metadata.release]
-push = true
-sign-commit = false
-tag-name = "v{{version}}"
-tag-message = "Release {{version}}"
-pre-release-commit-message = "chore: release v{{version}}"
-push-remote = "origin"

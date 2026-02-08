@@ -20,8 +20,11 @@ clean:
 check:
     {{ CARGO }} check
 
-release:
-    {{ CARGO }} publish --dry-run
+release LEVEL="patch":
+    {{ CARGO }} release --workspace --execute {{ LEVEL }}
+
+release-dry-run LEVEL="patch":
+    {{ CARGO }} release --workspace {{ LEVEL }}
 
 doc:
     {{ CARGO }} doc --no-deps --open

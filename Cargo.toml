@@ -3,7 +3,7 @@ members = ["tokio-fsm", "tokio-fsm-core", "tokio-fsm-macros"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT"
@@ -12,8 +12,8 @@ repository = "https://github.com/abhishekshree/tokio-fsm"
 readme = "README.md"
 
 [workspace.dependencies]
-tokio-fsm-core = { version = "0.1.0", path = "tokio-fsm-core" }
-tokio-fsm-macros = { version = "0.1.0", path = "tokio-fsm-macros" }
+tokio-fsm-core = { version = "0.1.1", path = "tokio-fsm-core" }
+tokio-fsm-macros = { version = "0.1.1", path = "tokio-fsm-macros" }
 
 tokio = { version = "1.0", features = ["full"] }
 thiserror = "2.0"

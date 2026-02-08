@@ -1,5 +1,11 @@
 # tokio-fsm
 
+[![Crates.io](https://img.shields.io/crates/v/tokio-fsm.svg)](https://crates.io/crates/tokio-fsm)
+[![Docs](https://docs.rs/tokio-fsm/badge.svg)](https://docs.rs/tokio-fsm)
+[![CI](https://github.com/abhishekshree/tokio-fsm/actions/workflows/ci.yml/badge.svg)](https://github.com/abhishekshree/tokio-fsm/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+
 Compile-time generation of Tokio async finite state machines with explicit Rust behavior and zero runtime overhead.
 
 `tokio-fsm` allows you to define complex asynchronous state machines using a declarative macro. It handles the boilerplate of event loops, channel management, and state transitions, allowing you to focus on your business logic.

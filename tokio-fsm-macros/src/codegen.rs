@@ -36,10 +36,9 @@ pub fn generate(fsm: &FsmStructure, original_impl: &ItemImpl) -> TokenStream {
             syn::ImplItem::Fn(method) => {
                 let mut method = method.clone();
                 method.attrs.retain(|attr| {
-                    !attr.path().is_ident("event")
+                    !attr.path().is_ident("on")
                         && !attr.path().is_ident("state_timeout")
                         && !attr.path().is_ident("on_timeout")
-                        && !attr.path().is_ident("state")
                 });
                 Some(syn::ImplItem::Fn(method))
             }

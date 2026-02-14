@@ -10,20 +10,18 @@ pub struct Context {
     pub counter: usize,
 }
 
-#[fsm(initial = "Idle")]
+#[fsm(initial = Idle)]
 impl MacroFsm {
     type Context = Context;
     type Error = std::convert::Infallible;
 
-    #[state(Idle)]
-    #[event(Ping)]
+    #[on(state = Idle, event = Ping)]
     async fn on_ping(&mut self) -> Transition<Running> {
         self.context.counter += 1;
         Transition::to(Running)
     }
 
-    #[state(Running)]
-    #[event(Pong)]
+    #[on(state = Running, event = Pong)]
     async fn on_pong(&mut self) -> Transition<Idle> {
         self.context.counter += 1;
         Transition::to(Idle)

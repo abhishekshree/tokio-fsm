@@ -8,16 +8,23 @@
 
 Compile-time validated Tokio async finite state machines with explicit Rust behavior and minimal runtime overhead.
 
-`tokio-fsm` allows you to define complex asynchronous state machines using a declarative macro. It handles the boilerplate of event loops, channel management, and state transitions, allowing you to focus on your business logic.
+`tokio-fsm` allows you to define complex asynchronous state machines using a declarative macro. It handles the boilerplate of event loops, channel management, and state transitions.
 
 ## Features
 
 - **Declarative FSMs**: Define states and events using standard Rust `impl` blocks.
-- **State-Gated Events**: Handlers declare which states they are valid in via `#[state(...)]`.
-- **Async First**: All handlers are `async`, designed to work seamlessly with the Tokio runtime.
-- **Compile-time Validation**: Uses `petgraph` to verify state reachability and valid transitions at compile-time.
-- **State Timeouts**: Easily configure timeouts for specific states that trigger auto-transitions.
+- **Unified Handlers**: Use `#[on(state = X, event = Y)]` to map states and events to code.
+- **Async First**: All handlers are `async`.
+- **Compile-time Validation**: Verifies state reachability and valid transitions at compile-time.
 - **Type-Safe Transitions**: Ensures you only transition to valid states defined in your machine.
+
+## Defining States and Events
+
+You don't need to manually define enums or structs for your states and events. The `#[fsm]` macro **discovers** them from your implementation:
+
+- **States**: Are discovered from the `initial` parameter, the `state` field in `#[on]`, and the `Transition<State>` return types.
+- **Events**: Are discovered from the `event` field in `#[on]`.
+- **Event Data**: If a handler has a second argument (e.g., `fn handle(&mut self, data: MyData)`), the event will carry `MyData` as its payload.
 
 ## Quick Start
 
@@ -27,20 +34,18 @@ use tokio_fsm::{fsm, Transition};
 #[derive(Debug, Default)]
 pub struct MyContext { count: usize }
 
-#[fsm(initial = "Idle")]
+#[fsm(initial = Idle)]
 impl MyFsm {
     type Context = MyContext;
     type Error = std::convert::Infallible;
 
-    #[state(Idle)]
-    #[event(Start)]
+    #[on(state = Idle, event = Start)]
     async fn handle_start(&mut self) -> Transition<Running> {
         self.context.count += 1;
         Transition::to(Running)
     }
 
-    #[state(Running)]
-    #[event(Stop)]
+    #[on(state = Running, event = Stop)]
     async fn handle_stop(&mut self) -> Transition<Idle> {
         Transition::to(Idle)
     }
@@ -50,26 +55,18 @@ impl MyFsm {
 async fn main() {
     let (handle, task) = MyFsm::spawn(MyContext::default());
     
+    // Events are generated as an enum: [FsmName]Event
     handle.send(MyFsmEvent::Start).await.unwrap();
-    println!("Current state: {:?}", handle.current_state());
     
     handle.shutdown_graceful();
     let final_context = task.await.unwrap();
-    println!("Total transitions: {}", final_context.count);
 }
 ```
 
-## Comparisons
-
-See [tokio-fsm/examples/comparison.rs](tokio-fsm/examples/comparison.rs) for a side-by-side comparison of a manual implementation vs. the `tokio-fsm` way.
-
 ## Documentation
 
-Detailed documentation on attributes:
-
-- `#[fsm(initial = "...", channel_size = 100)]`: Entry point for the FSM.
-- `#[state(Idle, Running)]`: Declares which states a handler is valid in (required on event handlers).
-- `#[event(EventName)]`: Maps a method to a specific event.
+- `#[fsm(initial = Idle, channel_size = 100)]`: Entry point for the FSM. `initial` takes the state name directly.
+- `#[on(state = Idle, event = Start)]`: Maps a handler to a specific state and event. You can have multiple `#[on]` attributes on one method for multi-state handlers.
 - `#[state_timeout(duration = "30s")]`: Configures a timeout for the state reached after this transition.
 - `#[on_timeout]`: Specifies the handler that executes when a state times out.
 

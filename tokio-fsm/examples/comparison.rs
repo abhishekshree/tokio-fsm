@@ -1,7 +1,4 @@
 //! Example: Comparing Manual FSM Implementation vs. tokio-fsm Macro
-//!
-//! This example shows the exact same FSM logic implemented twice.
-//! Compare the amount of boilerplate and manual wiring required for each.
 
 use tokio::sync::{mpsc, watch};
 use tokio_fsm::{Transition, fsm};
@@ -18,27 +15,23 @@ pub struct Context {
     pub count: usize,
 }
 
-// --- OPTION 1: MANUAL IMPLEMENTATION (The "Boilerplate" way) ---
+// --- OPTION 1: MANUAL IMPLEMENTATION ---
 
-/// Manual state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManualState {
     Idle,
     Processing,
 }
 
-/// Manual event enum
 pub enum ManualEvent {
     Start(Job),
 }
 
-/// Manual handle to control the FSM
 pub struct ManualHandle {
     pub tx: mpsc::Sender<ManualEvent>,
     pub state_rx: watch::Receiver<ManualState>,
 }
 
-/// Manual loop implementation
 pub struct ManualFsm {
     state: ManualState,
     context: Context,
@@ -78,15 +71,14 @@ impl ManualFsm {
     }
 }
 
-// --- OPTION 2: MACRO IMPLEMENTATION (The "tokio-fsm" way) ---
+// --- OPTION 2: MACRO IMPLEMENTATION ---
 
-#[fsm(initial = "Idle")]
+#[fsm(initial = Idle)]
 impl MacroFsm {
     type Context = Context;
     type Error = std::convert::Infallible;
 
-    #[state(Idle)]
-    #[event(Start)]
+    #[on(state = Idle, event = Start)]
     async fn handle_start(&mut self, job: Job) -> Transition<Processing> {
         println!("Macro: Starting job {}", job.id);
         self.context.count += 1;

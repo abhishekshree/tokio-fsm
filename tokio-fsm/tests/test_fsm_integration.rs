@@ -14,21 +14,20 @@ pub enum TestError {
     Internal(String),
 }
 
-#[fsm(initial = "Idle", channel_size = 32)]
+#[fsm(initial = Idle, channel_size = 32)]
 impl IntegrationFsm {
     type Context = TestContext;
     type Error = TestError;
 
-    #[state(Idle)]
-    #[event(Start)]
+    #[on(state = Idle, event = Start)]
     #[state_timeout(duration = "100ms")]
     async fn handle_start(&mut self) -> Transition<Pending> {
         self.context.transition_count += 1;
         Transition::to(Pending)
     }
 
-    #[state(Pending, Active)]
-    #[event(Process)]
+    #[on(state = Pending, event = Process)]
+    #[on(state = Active, event = Process)]
     #[state_timeout(duration = "100ms")]
     async fn handle_process(&mut self, data: String) -> Transition<Active> {
         self.context.transition_count += 1;
@@ -36,8 +35,7 @@ impl IntegrationFsm {
         Transition::to(Active)
     }
 
-    #[state(Active)]
-    #[event(Finish)]
+    #[on(state = Active, event = Finish)]
     async fn handle_finish(&mut self) -> Transition<Done> {
         self.context.transition_count += 1;
         Transition::to(Done)

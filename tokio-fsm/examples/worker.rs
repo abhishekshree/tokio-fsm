@@ -29,13 +29,12 @@ pub enum WorkerError {
     DatabaseError(String),
 }
 
-#[fsm(initial = "Idle", channel_size = 100)]
+#[fsm(initial = Idle, channel_size = 100)]
 impl WorkerFsm {
     type Context = WorkerContext;
     type Error = WorkerError;
 
-    #[state(Idle)]
-    #[event(Job)]
+    #[on(state = Idle, event = Job)]
     #[state_timeout(duration = "30s")]
     async fn handle_job(&mut self, job: Job) -> Result<Transition<Working>, Transition<Failed>> {
         self.context
@@ -46,8 +45,7 @@ impl WorkerFsm {
             .map_err(|_| Transition::to(Failed))
     }
 
-    #[state(Working)]
-    #[event(Done)]
+    #[on(state = Working, event = Done)]
     async fn handle_done(&mut self) -> Transition<Idle> {
         Transition::to(Idle)
     }

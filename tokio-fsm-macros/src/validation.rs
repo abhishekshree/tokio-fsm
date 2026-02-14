@@ -99,7 +99,7 @@ impl FsmStructure {
             }
         };
 
-        let initial_state = args.initial_ident();
+        let initial_state = args.initial;
 
         // Extract associated types
         let mut context_type = None;
@@ -265,8 +265,8 @@ impl Handler {
 
         // Parse attributes
         for attr in &method.attrs {
-            if attr.path().is_ident("event") {
-                let attr_args: attrs::EventAttr = attrs::EventAttr::from_meta(&attr.meta)?;
+            if attr.path().is_ident("on") {
+                let on_attr: attrs::OnAttr = attrs::OnAttr::from_meta(&attr.meta)?;
                 let payload_type = if method.sig.inputs.len() > 1 {
                     if let FnArg::Typed(pat_type) = &method.sig.inputs[1] {
                         Some((*pat_type.ty).clone())
@@ -276,26 +276,19 @@ impl Handler {
                 } else {
                     None
                 };
-                event = Some(Event {
-                    name: attr_args.name,
-                    payload_type,
-                });
+                // Multiple #[on(...)] attributes are allowed for multi-state handlers
+                source_states.push(on_attr.state);
+                if event.is_none() {
+                    event = Some(Event {
+                        name: on_attr.event,
+                        payload_type,
+                    });
+                }
             } else if attr.path().is_ident("on_timeout") {
                 is_timeout_handler = true;
             } else if attr.path().is_ident("state_timeout") {
                 state_timeout_attr = Some(attrs::StateTimeoutAttr::from_meta(&attr.meta)?);
-            } else if attr.path().is_ident("state") {
-                let state_attr: attrs::StateAttr = attrs::StateAttr::from_meta(&attr.meta)?;
-                source_states = state_attr.states;
             }
-        }
-
-        // Validate: event handlers must have #[state(...)]
-        if event.is_some() && source_states.is_empty() {
-            return Err(syn::Error::new_spanned(
-                &method.sig.ident,
-                "Event handlers require #[state(StateName, ...)] to declare valid source states",
-            ));
         }
 
         // Derive: has_payload

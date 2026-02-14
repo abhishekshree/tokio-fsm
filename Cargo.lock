@@ -1366,7 +1366,7 @@ dependencies = [
 
 [[package]]
 name = "tokio-fsm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "criterion",
  "thiserror",
@@ -1377,7 +1377,7 @@ dependencies = [
 
 [[package]]
 name = "tokio-fsm-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "thiserror",
  "tokio",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "tokio-fsm-macros"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "darling",
  "humantime",

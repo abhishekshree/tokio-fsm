@@ -63,6 +63,15 @@ async fn main() {
 }
 ```
 
+## Production Example: Axum Order Processing
+
+For a more complete example showing how to use `tokio-fsm` in a real-world web application with [Axum](https://github.com/tokio-rs/axum), check out the [axum_fsm example](file:///home/shree/tokio-fsm/examples/axum_fsm).
+
+It demonstrates:
+- Managing multiple FSM instances in memory.
+- Driving transitions via HTTP handlers.
+- Error handling and state querying.
+
 ## Documentation
 
 - `#[fsm(initial = Idle, channel_size = 100)]`: Entry point for the FSM. `initial` takes the state name directly.

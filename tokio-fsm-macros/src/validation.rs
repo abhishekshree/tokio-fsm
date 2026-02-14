@@ -2,11 +2,14 @@
 //!
 //! This module is the first layer of the macro pipeline. It:
 //! 1. Parses the `impl` block to extract states, events, and handlers
-//! 2. Derives semantic fields (timeout durations, payload presence, result types)
+//! 2. Derives semantic fields (timeout durations, payload presence, result
+//!    types)
 //! 3. Validates the FSM graph (reachability from initial state)
 
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use darling::FromMeta;
 use petgraph::{algo::has_path_connecting, graph::DiGraph};
@@ -28,7 +31,8 @@ pub struct Event {
     pub payload_type: Option<Type>,
 }
 
-/// Represents a handler method in the FSM, including all derived semantic fields.
+/// Represents a handler method in the FSM, including all derived semantic
+/// fields.
 #[derive(Debug, Clone)]
 pub struct Handler {
     pub method: syn::ImplItemFn,

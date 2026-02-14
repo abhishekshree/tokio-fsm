@@ -1,7 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use tokio::sync::mpsc;
-
-// --- Macro FSM Definition ---
 use tokio_fsm::fsm;
 use tokio_fsm_core::Transition;
 
@@ -28,7 +26,6 @@ impl MacroFsm {
     }
 }
 
-// --- Manual FSM Definition ---
 #[derive(Clone)]
 struct ManualFsmHandle {
     tx: mpsc::Sender<ManualEvent>,

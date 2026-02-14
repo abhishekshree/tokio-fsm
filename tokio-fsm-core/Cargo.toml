@@ -12,3 +12,4 @@ description = "Core runtime types for tokio-fsm"
 
 [dependencies]
 tokio = { workspace = true }
+thiserror = { workspace = true }

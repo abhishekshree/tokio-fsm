@@ -40,7 +40,7 @@ pub fn render_task_struct(ir: &FsmIr) -> TokenStream {
 
     quote! {
         /// A handle to the background task running the FSM.
-        /// Awaiting this will return the final context when the FSM shuts down.
+        /// Awaiting this will return the final context or an error.
         pub struct #task_name {
             handle: tokio::task::JoinHandle<Result<#context_type, #error_type>>,
         }

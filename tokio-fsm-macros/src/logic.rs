@@ -15,15 +15,17 @@ pub fn build_event_arms(ir: &FsmIr) -> Vec<TokenStream> {
             let method_name = &handler.method_name;
 
             // 1. Timeout Reset Logic
+            // 1. Timeout Reset Logic
             let timeout_reset = if let Some(duration) = handler.timeout {
                 let secs = duration.as_secs();
                 let nanos = duration.subsec_nanos();
                 quote! {
-                    let d = std::time::Duration::new(#secs, #nanos);
-                    timeout = Some(Box::pin(tokio::time::sleep(d)));
+                    sleep.as_mut().reset(tokio::time::Instant::now() + std::time::Duration::new(#secs, #nanos));
                 }
             } else {
-                quote! { timeout = None; }
+                quote! {
+                    sleep.as_mut().reset(tokio::time::Instant::now() + std::time::Duration::from_secs(3153600000));
+                }
             };
 
             // 2. Payload Handling
@@ -45,7 +47,7 @@ pub fn build_event_arms(ir: &FsmIr) -> Vec<TokenStream> {
                         Err(transition) => {
                             self.state = transition.into_state().into();
                             let _ = state_tx.send(self.state);
-                            timeout = None;
+                            sleep.as_mut().reset(tokio::time::Instant::now() + std::time::Duration::from_secs(3153600000));
                         }
                     }
                 }

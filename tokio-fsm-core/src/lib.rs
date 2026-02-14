@@ -31,3 +31,14 @@ pub enum ShutdownMode {
     /// events.
     Immediate,
 }
+
+/// Error type returned by the FSM task.
+#[derive(Debug, thiserror::Error)]
+pub enum TaskError<E> {
+    /// The FSM terminated with a logical error.
+    #[error("FSM error: {0}")]
+    Fsm(E),
+    /// The FSM task panicked or was cancelled.
+    #[error("Task join error: {0}")]
+    Join(#[from] tokio::task::JoinError),
+}

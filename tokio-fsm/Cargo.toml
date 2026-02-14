@@ -21,3 +21,11 @@ tokio-fsm-core = { workspace = true }
 tokio-fsm-macros = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "comparison"
+harness = false

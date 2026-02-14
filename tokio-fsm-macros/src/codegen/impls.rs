@@ -54,16 +54,16 @@ pub fn render_run(
             mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
             state_tx: tokio::sync::watch::Sender<#state_enum_name>,
         ) -> Result<#context_type, #error_type> {
-            let mut timeout: Option<std::pin::Pin<Box<tokio::time::Sleep>>> = None;
+            let sleep = tokio::time::sleep(tokio::time::Duration::from_secs(3153600000)); // ~100 years
+            tokio::pin!(sleep);
 
             loop {
-                // If we have a timeout, we need to select on it
-                if let Some(timer) = &mut timeout {
-                    tokio::select! {
-                        _ = timer => {
+                // Select on the pinned sleep future
+                tokio::select! {
+                        _ = &mut sleep => {
                             #timeout_logic
-                            // Clear timeout after it fires
-                            timeout = None;
+                            // Disable timeout after it fires until set again
+                            sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
                         }
                         // Important: Check shutdown BEFORE events to allow immediate exit
                         _ = shutdown.changed() => {
@@ -94,38 +94,6 @@ pub fn render_run(
                             }
                         }
                     }
-                } else {
-                    // No timeout, simpler select
-                     tokio::select! {
-                        _ = shutdown.changed() => {
-                            let mode = *shutdown.borrow();
-                             if let Some(mode) = mode {
-                                match mode {
-                                    tokio_fsm_core::ShutdownMode::Immediate => return Ok(self.context),
-                                    tokio_fsm_core::ShutdownMode::Graceful => {
-                                        // Process remaining events
-                                        while let Ok(event) = events.try_recv() {
-                                             match (self.state, event) {
-                                                #(#event_match_arms)*
-                                                _ => {}
-                                            }
-                                        }
-                                        return Ok(self.context);
-                                    }
-                                }
-                            }
-                        }
-                        event = events.recv() => {
-                            let Some(event) = event else { break };
-                            match (self.state, event) {
-                                #(#event_match_arms)*
-                                _ => {
-                                    // Event not handled in current state
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
             Ok(self.context)
@@ -185,23 +153,15 @@ pub fn render_task_impl(ir: &FsmIr) -> TokenStream {
 
     quote! {
         impl std::future::Future for #task_name {
-            type Output = Result<#context_type, #error_type>;
+            type Output = Result<#context_type, tokio_fsm_core::TaskError<#error_type>>;
 
             fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
                 use std::task::Poll;
                 match std::pin::Pin::new(&mut self.handle).poll(cx) {
-                    Poll::Ready(Ok(res)) => Poll::Ready(res),
-                    Poll::Ready(Err(e)) => {
-                        // JoinError - task panicked or cancelled
-                        // We can't really return the user's error type here easily unless we wrap JoinError
-                        // For now, we panic if the task panicked to propagate it.
-                        if e.is_panic() {
-                            std::panic::resume_unwind(e.into_panic());
-                        } else {
-                            // Cancelled
-                            Poll::Pending // Or error?
-                        }
-                    }
+                    Poll::Ready(Ok(Ok(res))) => Poll::Ready(Ok(res)),
+                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(tokio_fsm_core::TaskError::Fsm(e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(tokio_fsm_core::TaskError::Join(e))),
+                    Poll::Pending => Poll::Pending,
                     Poll::Pending => Poll::Pending,
                 }
             }

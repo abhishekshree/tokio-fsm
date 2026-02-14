@@ -85,6 +85,7 @@ impl MacroFsm {
     type Context = Context;
     type Error = std::convert::Infallible;
 
+    #[state(Idle)]
     #[event(Start)]
     async fn handle_start(&mut self, job: Job) -> Transition<Processing> {
         println!("Macro: Starting job {}", job.id);
@@ -115,11 +116,4 @@ async fn main() {
         .await
         .unwrap();
     println!("Macro state: {:?}", macro_handle.current_state());
-
-    // Notice that MacroFsm automatically generated:
-    // 1. Event enum with Job payload (MacroFsmEvent)
-    // 2. State enum (MacroFsmState)
-    // 3. Handle and Task structs
-    // 4. Thread-safe event loop with graceful shutdown support
-    // 5. State struct tags for Transition<Processing>
 }

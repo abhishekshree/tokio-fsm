@@ -1,16 +1,16 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::ir::FsmIr;
+use crate::validation::FsmStructure;
 
-pub fn render_spawn(ir: &FsmIr) -> TokenStream {
-    let fsm_name = &ir.fsm_name;
-    let handle_name = &ir.handle_name;
-    let task_name = &ir.task_name;
-    let state_enum_name = &ir.state_enum_ident;
-    let initial_state = &ir.initial_state;
-    let channel_size = ir.channel_size;
-    let context_type = &ir.context_type;
+pub fn render_spawn(fsm: &FsmStructure) -> TokenStream {
+    let fsm_name = &fsm.fsm_name;
+    let handle_name = fsm.handle_ident();
+    let task_name = fsm.task_ident();
+    let state_enum_name = fsm.state_enum_ident();
+    let initial_state = &fsm.initial_state;
+    let channel_size = fsm.channel_size;
+    let context_type = &fsm.context_type;
 
     quote! {
         pub fn spawn(context: #context_type) -> (#handle_name, #task_name) {
@@ -23,6 +23,7 @@ pub fn render_spawn(ir: &FsmIr) -> TokenStream {
                 context,
             };
 
+            let shutdown_tx = std::sync::Arc::new(shutdown_tx);
             let handle = tokio::spawn(fsm.run(event_rx, shutdown_rx, state_tx));
 
             (
@@ -37,15 +38,14 @@ pub fn render_spawn(ir: &FsmIr) -> TokenStream {
     }
 }
 
-pub fn render_run(
-    ir: &FsmIr,
-    event_match_arms: &[TokenStream],
-    timeout_logic: &TokenStream,
-) -> TokenStream {
-    let event_enum_name = &ir.event_enum_ident;
-    let state_enum_name = &ir.state_enum_ident;
-    let context_type = &ir.context_type;
-    let error_type = &ir.error_type;
+pub fn render_run(fsm: &FsmStructure) -> TokenStream {
+    let event_enum_name = fsm.event_enum_ident();
+    let state_enum_name = fsm.state_enum_ident();
+    let context_type = &fsm.context_type;
+    let error_type = &fsm.error_type;
+
+    let event_arms = build_event_arms(fsm);
+    let timeout_logic = build_timeout_handler(fsm);
 
     quote! {
         async fn run(
@@ -54,46 +54,42 @@ pub fn render_run(
             mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
             state_tx: tokio::sync::watch::Sender<#state_enum_name>,
         ) -> Result<#context_type, #error_type> {
-            let sleep = tokio::time::sleep(tokio::time::Duration::from_secs(3153600000)); // ~100 years
+            let sleep = tokio::time::sleep(tokio::time::Duration::from_secs(3153600000));
             tokio::pin!(sleep);
 
             loop {
-                // Select on the pinned sleep future
                 tokio::select! {
-                        _ = &mut sleep => {
-                            #timeout_logic
-                            // Disable timeout after it fires until set again
-                            sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
-                        }
-                        // Important: Check shutdown BEFORE events to allow immediate exit
-                        _ = shutdown.changed() => {
-                            let mode = *shutdown.borrow();
-                            if let Some(mode) = mode {
-                                match mode {
-                                    tokio_fsm_core::ShutdownMode::Immediate => return Ok(self.context),
-                                    tokio_fsm_core::ShutdownMode::Graceful => {
-                                        // Process remaining events then exit
-                                        while let Ok(event) = events.try_recv() {
-                                             match (self.state, event) {
-                                                #(#event_match_arms)*
-                                                _ => {} // Ignore unexpected events during shutdown or normal op
-                                            }
+                    _ = &mut sleep => {
+                        #timeout_logic
+                        sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
+                    }
+                    _ = shutdown.changed() => {
+                        let mode = *shutdown.borrow();
+                        if let Some(mode) = mode {
+                            match mode {
+                                tokio_fsm_core::ShutdownMode::Immediate => return Ok(self.context),
+                                tokio_fsm_core::ShutdownMode::Graceful => {
+                                    while let Ok(event) = events.try_recv() {
+                                         match (self.state, event) {
+                                            #(#event_arms)*
+                                            _ => {}
                                         }
-                                        return Ok(self.context);
                                     }
-                                }
-                            }
-                        }
-                        event = events.recv() => {
-                            let Some(event) = event else { break };
-                            match (self.state, event) {
-                                #(#event_match_arms)*
-                                _ => {
-                                    // Event not handled in current state, ignore
+                                    return Ok(self.context);
                                 }
                             }
                         }
                     }
+                    event = events.recv() => {
+                        let Some(event) = event else { break };
+                        match (self.state, event) {
+                            #(#event_arms)*
+                            _ => {
+                                // Event not handled in current state — silently ignored
+                            }
+                        }
+                    }
+                }
             }
 
             Ok(self.context)
@@ -101,10 +97,10 @@ pub fn render_run(
     }
 }
 
-pub fn render_handle_impl(ir: &FsmIr) -> TokenStream {
-    let handle_name = &ir.handle_name;
-    let event_enum_name = &ir.event_enum_ident;
-    let state_enum_name = &ir.state_enum_ident;
+pub fn render_handle_impl(fsm: &FsmStructure) -> TokenStream {
+    let handle_name = fsm.handle_ident();
+    let event_enum_name = fsm.event_enum_ident();
+    let state_enum_name = fsm.state_enum_ident();
 
     quote! {
         impl #handle_name {
@@ -113,7 +109,7 @@ pub fn render_handle_impl(ir: &FsmIr) -> TokenStream {
                 self.event_tx.send(event).await
             }
 
-            /// Attempts to send an event to the FSM without awaiting capacity.
+            /// Attempts to send an event without awaiting capacity.
             pub fn try_send(&self, event: #event_enum_name) -> Result<(), tokio::sync::mpsc::error::TrySendError<#event_enum_name>> {
                 self.event_tx.try_send(event)
             }
@@ -124,21 +120,20 @@ pub fn render_handle_impl(ir: &FsmIr) -> TokenStream {
             }
 
             /// Waits for the FSM to reach the specified state.
-            pub async fn wait_for_state(&mut self, target: #state_enum_name) -> Result<(), tokio::sync::watch::error::RecvError> {
-                while *self.state_rx.borrow() != target {
-                    self.state_rx.changed().await?;
+            pub async fn wait_for_state(&self, target: #state_enum_name) -> Result<(), tokio::sync::watch::error::RecvError> {
+                let mut rx = self.state_rx.clone();
+                while *rx.borrow_and_update() != target {
+                    rx.changed().await?;
                 }
                 Ok(())
             }
 
-            /// Initiates a graceful shutdown of the FSM.
-            /// The FSM will process all remaining events in the queue before exiting.
+            /// Initiates a graceful shutdown. Processes remaining events before exiting.
             pub fn shutdown_graceful(&self) {
                 let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Graceful));
             }
 
-            /// Initiates an immediate shutdown of the FSM.
-            /// The FSM will exit immediately, dropping any unprocessed events.
+            /// Initiates an immediate shutdown. Drops unprocessed events.
             pub fn shutdown_immediate(&self) {
                 let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Immediate));
             }
@@ -146,25 +141,109 @@ pub fn render_handle_impl(ir: &FsmIr) -> TokenStream {
     }
 }
 
-pub fn render_task_impl(ir: &FsmIr) -> TokenStream {
-    let task_name = &ir.task_name;
-    let context_type = &ir.context_type;
-    let error_type = &ir.error_type;
+pub fn render_task_impl(fsm: &FsmStructure) -> TokenStream {
+    let task_name = fsm.task_ident();
+    let context_type = &fsm.context_type;
+    let error_type = &fsm.error_type;
 
     quote! {
         impl std::future::Future for #task_name {
             type Output = Result<#context_type, tokio_fsm_core::TaskError<#error_type>>;
 
             fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-                use std::task::Poll;
                 match std::pin::Pin::new(&mut self.handle).poll(cx) {
-                    Poll::Ready(Ok(Ok(res))) => Poll::Ready(Ok(res)),
-                    Poll::Ready(Ok(Err(e))) => Poll::Ready(Err(tokio_fsm_core::TaskError::Fsm(e))),
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(tokio_fsm_core::TaskError::Join(e))),
-                    Poll::Pending => Poll::Pending,
-                    Poll::Pending => Poll::Pending,
+                    std::task::Poll::Ready(Ok(Ok(res))) => std::task::Poll::Ready(Ok(res)),
+                    std::task::Poll::Ready(Ok(Err(e))) => std::task::Poll::Ready(Err(tokio_fsm_core::TaskError::Fsm(e))),
+                    std::task::Poll::Ready(Err(e)) => std::task::Poll::Ready(Err(tokio_fsm_core::TaskError::Join(e))),
+                    std::task::Poll::Pending => std::task::Poll::Pending,
                 }
             }
         }
+    }
+}
+
+// --- Event loop logic (previously in logic.rs) ---
+
+/// Builds state-gated match arms for the event loop.
+fn build_event_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
+    let mut arms = Vec::new();
+    let event_enum = fsm.event_enum_ident();
+    let state_enum = fsm.state_enum_ident();
+
+    for handler in &fsm.handlers {
+        if let Some(ref event) = handler.event {
+            let event_name = &event.name;
+            let method_name = &handler.method.sig.ident;
+
+            // Timeout reset logic
+            let timeout_reset = if let Some(duration) = handler.timeout {
+                let secs = duration.as_secs();
+                let nanos = duration.subsec_nanos();
+                quote! {
+                    sleep.as_mut().reset(tokio::time::Instant::now() + std::time::Duration::new(#secs, #nanos));
+                }
+            } else {
+                quote! {
+                    sleep.as_mut().reset(tokio::time::Instant::now() + std::time::Duration::from_secs(3153600000));
+                }
+            };
+
+            // Payload handling
+            let (payload_pattern, payload_call) = if handler.has_payload {
+                (quote! { (payload) }, quote! { (payload) })
+            } else {
+                (quote! {}, quote! { () })
+            };
+
+            // Result vs direct transition
+            let arm_inner = if handler.is_result {
+                quote! {
+                    match self.#method_name #payload_call .await {
+                        Ok(transition) => {
+                            self.state = transition.into_state().into();
+                            let _ = state_tx.send(self.state);
+                            #timeout_reset
+                        }
+                        Err(transition) => {
+                            self.state = transition.into_state().into();
+                            let _ = state_tx.send(self.state);
+                            sleep.as_mut().reset(tokio::time::Instant::now() + std::time::Duration::from_secs(3153600000));
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    let transition = self.#method_name #payload_call .await;
+                    self.state = transition.into_state().into();
+                    let _ = state_tx.send(self.state);
+                    #timeout_reset
+                }
+            };
+
+            // Generate one match arm per source state (state-gated)
+            for source_state in &handler.source_states {
+                arms.push(quote! {
+                    (#state_enum::#source_state, #event_enum::#event_name #payload_pattern) => {
+                        #arm_inner
+                    }
+                });
+            }
+        }
+    }
+
+    arms
+}
+
+/// Builds the timeout handler block for the run loop.
+fn build_timeout_handler(fsm: &FsmStructure) -> TokenStream {
+    if let Some(handler) = fsm.handlers.iter().find(|h| h.is_timeout_handler) {
+        let name = &handler.method.sig.ident;
+        quote! {
+            let transition = self.#name().await;
+            self.state = transition.into_state().into();
+            let _ = state_tx.send(self.state);
+        }
+    } else {
+        quote! {}
     }
 }

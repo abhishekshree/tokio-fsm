@@ -8,12 +8,14 @@ pub enum Transition<T> {
 }
 
 impl<T> Transition<T> {
-    /// Create a simple transition to a new state.
+    /// Create a transition to a new state.
+    #[must_use]
     pub fn to(state: T) -> Self {
         Self::To(state)
     }
 
     /// Extract the target state.
+    #[must_use]
     pub fn into_state(self) -> T {
         match self {
             Self::To(state) => state,

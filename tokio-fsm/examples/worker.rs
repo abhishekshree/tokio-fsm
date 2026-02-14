@@ -18,30 +18,23 @@ pub struct Database;
 
 impl Database {
     async fn save(&self, _job: &Job) -> Result<(), WorkerError> {
-        // Simulate async work
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum WorkerError {
+    #[error("Database error: {0}")]
     DatabaseError(String),
 }
-
-impl std::fmt::Display for WorkerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for WorkerError {}
 
 #[fsm(initial = "Idle", channel_size = 100)]
 impl WorkerFsm {
     type Context = WorkerContext;
     type Error = WorkerError;
 
+    #[state(Idle)]
     #[event(Job)]
     #[state_timeout(duration = "30s")]
     async fn handle_job(&mut self, job: Job) -> Result<Transition<Working>, Transition<Failed>> {
@@ -53,6 +46,7 @@ impl WorkerFsm {
             .map_err(|_| Transition::to(Failed))
     }
 
+    #[state(Working)]
     #[event(Done)]
     async fn handle_done(&mut self) -> Transition<Idle> {
         Transition::to(Idle)

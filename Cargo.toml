@@ -15,7 +15,7 @@ readme = "README.md"
 tokio-fsm-core = { version = "0.1.1", path = "tokio-fsm-core" }
 tokio-fsm-macros = { version = "0.1.1", path = "tokio-fsm-macros" }
 
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["sync", "rt", "time", "macros"] }
 thiserror = "2.0"
 
 [workspace.metadata.release]

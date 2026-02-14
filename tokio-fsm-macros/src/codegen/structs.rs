@@ -1,12 +1,12 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::ir::FsmIr;
+use crate::validation::FsmStructure;
 
-pub fn render_fsm_struct(ir: &FsmIr) -> TokenStream {
-    let fsm_name = &ir.fsm_name;
-    let state_enum_name = &ir.state_enum_ident;
-    let context_type = &ir.context_type;
+pub fn render_fsm_struct(fsm: &FsmStructure) -> TokenStream {
+    let fsm_name = &fsm.fsm_name;
+    let state_enum_name = fsm.state_enum_ident();
+    let context_type = &fsm.context_type;
 
     quote! {
         /// The finite state machine structure.
@@ -17,26 +17,26 @@ pub fn render_fsm_struct(ir: &FsmIr) -> TokenStream {
     }
 }
 
-pub fn render_handle_struct(ir: &FsmIr) -> TokenStream {
-    let handle_name = &ir.handle_name;
-    let event_enum_name = &ir.event_enum_ident;
-    let state_enum_name = &ir.state_enum_ident;
+pub fn render_handle_struct(fsm: &FsmStructure) -> TokenStream {
+    let handle_name = fsm.handle_ident();
+    let event_enum_name = fsm.event_enum_ident();
+    let state_enum_name = fsm.state_enum_ident();
 
     quote! {
-        /// A handle to the running FSM, allowing for event submission and state monitoring.
+        /// A handle to the running FSM for event submission and state observation.
         #[derive(Clone)]
         pub struct #handle_name {
             event_tx: tokio::sync::mpsc::Sender<#event_enum_name>,
             state_rx: tokio::sync::watch::Receiver<#state_enum_name>,
-            shutdown_tx: tokio::sync::watch::Sender<Option<tokio_fsm_core::ShutdownMode>>,
+            shutdown_tx: std::sync::Arc<tokio::sync::watch::Sender<Option<tokio_fsm_core::ShutdownMode>>>,
         }
     }
 }
 
-pub fn render_task_struct(ir: &FsmIr) -> TokenStream {
-    let task_name = &ir.task_name;
-    let context_type = &ir.context_type;
-    let error_type = &ir.error_type;
+pub fn render_task_struct(fsm: &FsmStructure) -> TokenStream {
+    let task_name = fsm.task_ident();
+    let context_type = &fsm.context_type;
+    let error_type = &fsm.error_type;
 
     quote! {
         /// A handle to the background task running the FSM.

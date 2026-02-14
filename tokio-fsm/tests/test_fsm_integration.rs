@@ -19,6 +19,7 @@ impl IntegrationFsm {
     type Context = TestContext;
     type Error = TestError;
 
+    #[state(Idle)]
     #[event(Start)]
     #[state_timeout(duration = "100ms")]
     async fn handle_start(&mut self) -> Transition<Pending> {
@@ -26,6 +27,7 @@ impl IntegrationFsm {
         Transition::to(Pending)
     }
 
+    #[state(Pending, Active)]
     #[event(Process)]
     #[state_timeout(duration = "100ms")]
     async fn handle_process(&mut self, data: String) -> Transition<Active> {
@@ -34,6 +36,7 @@ impl IntegrationFsm {
         Transition::to(Active)
     }
 
+    #[state(Active)]
     #[event(Finish)]
     async fn handle_finish(&mut self) -> Transition<Done> {
         self.context.transition_count += 1;
@@ -57,7 +60,6 @@ async fn test_fsm_full_lifecycle() {
     // Idle -> Pending
     handle.send(IntegrationFsmEvent::Start).await.unwrap();
     handle
-        .clone()
         .wait_for_state(IntegrationFsmState::Pending)
         .await
         .unwrap();
@@ -68,7 +70,6 @@ async fn test_fsm_full_lifecycle() {
         .await
         .unwrap();
     handle
-        .clone()
         .wait_for_state(IntegrationFsmState::Active)
         .await
         .unwrap();
@@ -76,7 +77,6 @@ async fn test_fsm_full_lifecycle() {
     // Active -> Done
     handle.send(IntegrationFsmEvent::Finish).await.unwrap();
     handle
-        .clone()
         .wait_for_state(IntegrationFsmState::Done)
         .await
         .unwrap();
@@ -97,7 +97,6 @@ async fn test_fsm_timeout() {
     // Idle -> Pending
     handle.send(IntegrationFsmEvent::Start).await.unwrap();
     handle
-        .clone()
         .wait_for_state(IntegrationFsmState::Pending)
         .await
         .unwrap();

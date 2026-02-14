@@ -15,12 +15,14 @@ impl MacroFsm {
     type Context = Context;
     type Error = std::convert::Infallible;
 
+    #[state(Idle)]
     #[event(Ping)]
     async fn on_ping(&mut self) -> Transition<Running> {
         self.context.counter += 1;
         Transition::to(Running)
     }
 
+    #[state(Running)]
     #[event(Pong)]
     async fn on_pong(&mut self) -> Transition<Idle> {
         self.context.counter += 1;
@@ -29,7 +31,6 @@ impl MacroFsm {
 }
 
 // --- Manual FSM Definition ---
-// Minimal manual implementation for baseline
 #[derive(Clone)]
 struct ManualFsmHandle {
     tx: mpsc::Sender<ManualEvent>,
@@ -48,15 +49,34 @@ enum ManualEvent {
     Pong,
 }
 
+struct ManualFsm {
+    context: Context,
+}
+
+impl ManualFsm {
+    async fn on_ping(&mut self) -> Transition<ManualState> {
+        self.context.counter = self.context.counter.wrapping_add(1);
+        Transition::to(ManualState::Running)
+    }
+
+    async fn on_pong(&mut self) -> Transition<ManualState> {
+        self.context.counter = self.context.counter.wrapping_add(1);
+        Transition::to(ManualState::Idle)
+    }
+}
+
 impl ManualFsmHandle {
-    fn spawn(mut context: Context) -> (Self, tokio::task::JoinHandle<()>) {
+    fn spawn(context: Context) -> (Self, tokio::task::JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(100);
         let (state_tx, state_rx) = tokio::sync::watch::channel(ManualState::Idle);
+        let (shutdown_tx, mut shutdown_rx) =
+            tokio::sync::watch::channel(None::<tokio_fsm_core::ShutdownMode>);
 
         let handle = tokio::spawn(async move {
+            let mut fsm = ManualFsm { context };
             let mut state = ManualState::Idle;
+            let _shutdown_tx = shutdown_tx;
 
-            // Stack pinned sleep optimization (manual)
             let sleep = tokio::time::sleep(tokio::time::Duration::from_secs(3153600000));
             tokio::pin!(sleep);
 
@@ -65,22 +85,30 @@ impl ManualFsmHandle {
                     _ = &mut sleep => {
                         sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
                     }
-                    Some(event) = rx.recv() => {
-                         match (state, event) {
-                            (ManualState::Idle, ManualEvent::Ping) => {
-                                context.counter += 1;
-                                state = ManualState::Running;
-                                let _ = state_tx.send(state);
-                                sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
+                    _ = shutdown_rx.changed() => {
+                        break;
+                    }
+                    res = rx.recv() => {
+                        match res {
+                            Some(event) => {
+                                match (state, event) {
+                                    (ManualState::Idle, ManualEvent::Ping) => {
+                                        let transition = fsm.on_ping().await;
+                                        state = transition.into_state();
+                                        let _ = state_tx.send(state);
+                                        sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
+                                    }
+                                    (ManualState::Running, ManualEvent::Pong) => {
+                                        let transition = fsm.on_pong().await;
+                                        state = transition.into_state();
+                                        let _ = state_tx.send(state);
+                                        sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
+                                    }
+                                    _ => {}
+                                }
                             }
-                            (ManualState::Running, ManualEvent::Pong) => {
-                                context.counter += 1;
-                                state = ManualState::Idle;
-                                let _ = state_tx.send(state);
-                                sleep.as_mut().reset(tokio::time::Instant::now() + tokio::time::Duration::from_secs(3153600000));
-                            }
-                            _ => {}
-                         }
+                            None => break,
+                        }
                     }
                 }
             }
@@ -100,12 +128,9 @@ fn bench_transitions(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("fsm_transitions");
 
-    // Benchmark Throughput: Send Ping -> Wait for State change -> Send Pong -> Wait for State change
-    // This measures round-trip latency including channel overhead and context switching.
-
-    group.bench_function("macro_ping_pong", |b| {
+    group.bench_function("latency_macro_ping_pong", |b| {
         b.to_async(&rt).iter_custom(|iters| async move {
-            let (mut handle, _task) = MacroFsm::spawn(Context::default());
+            let (handle, _task) = MacroFsm::spawn(Context::default());
             let start = std::time::Instant::now();
             for _ in 0..iters {
                 handle.send(MacroFsmEvent::Ping).await.unwrap();
@@ -117,30 +142,53 @@ fn bench_transitions(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("manual_ping_pong", |b| {
-        b.to_async(&rt).iter_custom(|iters| {
-            async move {
-                let (handle, _task) = ManualFsmHandle::spawn(Context::default());
-                let start = std::time::Instant::now();
-                for _ in 0..iters {
-                    handle.tx.send(ManualEvent::Ping).await.unwrap();
-                    // Manual wait logic
-                    let mut rx = handle.state_rx.clone();
-                    while *rx.borrow_and_update() != ManualState::Running {
-                        rx.changed().await.unwrap();
-                    }
-
-                    handle.tx.send(ManualEvent::Pong).await.unwrap();
-                    let mut rx = handle.state_rx.clone();
-                    while *rx.borrow_and_update() != ManualState::Idle {
-                        rx.changed().await.unwrap();
-                    }
+    group.bench_function("latency_manual_ping_pong", |b| {
+        b.to_async(&rt).iter_custom(|iters| async move {
+            let (handle, _task) = ManualFsmHandle::spawn(Context::default());
+            let start = std::time::Instant::now();
+            for _ in 0..iters {
+                handle.tx.send(ManualEvent::Ping).await.unwrap();
+                let mut rx = handle.state_rx.clone();
+                while *rx.borrow_and_update() != ManualState::Running {
+                    rx.changed().await.unwrap();
                 }
-                start.elapsed()
+
+                handle.tx.send(ManualEvent::Pong).await.unwrap();
+                let mut rx = handle.state_rx.clone();
+                while *rx.borrow_and_update() != ManualState::Idle {
+                    rx.changed().await.unwrap();
+                }
             }
+            start.elapsed()
         });
     });
 
+    group.finish();
+
+    let mut group = c.benchmark_group("fsm_throughput");
+    group.throughput(criterion::Throughput::Elements(1));
+
+    group.bench_function("throughput_macro_fire", |b| {
+        b.to_async(&rt).iter_custom(|iters| async move {
+            let (handle, _task) = MacroFsm::spawn(Context::default());
+            let start = std::time::Instant::now();
+            for _ in 0..iters {
+                handle.send(MacroFsmEvent::Ping).await.unwrap();
+            }
+            start.elapsed()
+        });
+    });
+
+    group.bench_function("throughput_manual_fire", |b| {
+        b.to_async(&rt).iter_custom(|iters| async move {
+            let (handle, _task) = ManualFsmHandle::spawn(Context::default());
+            let start = std::time::Instant::now();
+            for _ in 0..iters {
+                handle.tx.send(ManualEvent::Ping).await.unwrap();
+            }
+            start.elapsed()
+        });
+    });
     group.finish();
 }
 

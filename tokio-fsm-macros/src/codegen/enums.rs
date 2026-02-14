@@ -1,23 +1,24 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::ir::FsmIr;
+use crate::validation::FsmStructure;
 
-pub fn render_state_enum(ir: &FsmIr) -> TokenStream {
-    let states: Vec<_> = ir.states.iter().map(|s| &s.name).collect();
-    let state_enum_name = &ir.state_enum_ident;
+pub fn render_state_enum(fsm: &FsmStructure) -> TokenStream {
+    let states: Vec<_> = fsm.states.iter().map(|s| &s.name).collect();
+    let state_enum_name = fsm.state_enum_ident();
 
-    let state_structs: Vec<_> = ir
+    let state_structs: Vec<_> = fsm
         .states
         .iter()
         .map(|s| {
             let name = &s.name;
+            let enum_name = &state_enum_name;
             quote! {
                 #[derive(Debug, Clone, Copy)]
                 pub struct #name;
-                impl From<#name> for #state_enum_name {
+                impl From<#name> for #enum_name {
                     fn from(_: #name) -> Self {
-                        #state_enum_name::#name
+                        #enum_name::#name
                     }
                 }
             }
@@ -34,8 +35,8 @@ pub fn render_state_enum(ir: &FsmIr) -> TokenStream {
     }
 }
 
-pub fn render_event_enum(ir: &FsmIr) -> TokenStream {
-    let variants: Vec<TokenStream> = ir
+pub fn render_event_enum(fsm: &FsmStructure) -> TokenStream {
+    let variants: Vec<TokenStream> = fsm
         .events
         .iter()
         .map(|event| {
@@ -48,7 +49,7 @@ pub fn render_event_enum(ir: &FsmIr) -> TokenStream {
         })
         .collect();
 
-    let event_enum_name = &ir.event_enum_ident;
+    let event_enum_name = fsm.event_enum_ident();
 
     quote! {
         #[derive(Debug, Clone)]

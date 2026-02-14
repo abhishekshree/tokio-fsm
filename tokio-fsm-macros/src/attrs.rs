@@ -44,6 +44,35 @@ pub struct StateTimeoutAttr {
     pub duration: LitStr,
 }
 
+/// Arguments for the `#[state(...)]` attribute.
+/// Specifies which states a handler is valid in.
+#[derive(Debug)]
+pub struct StateAttr {
+    pub states: Vec<Ident>,
+}
+
+impl FromMeta for StateAttr {
+    fn from_meta(meta: &syn::Meta) -> Result<Self, darling::Error> {
+        match meta {
+            syn::Meta::List(list) => {
+                let parser = syn::punctuated::Punctuated::<Ident, syn::Token![,]>::parse_terminated;
+                let punct =
+                    syn::parse::Parser::parse2(parser, list.tokens.clone()).map_err(|_| {
+                        darling::Error::custom("Expected state names: #[state(Idle, Running)]")
+                    })?;
+                let states: Vec<Ident> = punct.into_iter().collect();
+                if states.is_empty() {
+                    return Err(darling::Error::custom(
+                        "#[state(...)] requires at least one state name",
+                    ));
+                }
+                Ok(StateAttr { states })
+            }
+            _ => Err(darling::Error::custom("Expected #[state(StateName, ...)]")),
+        }
+    }
+}
+
 impl FsmArgs {
     /// Parse the initial state as an identifier.
     pub fn initial_ident(&self) -> Ident {

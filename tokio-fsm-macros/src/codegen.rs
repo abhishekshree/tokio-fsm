@@ -2,24 +2,20 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ItemImpl;
 
-use crate::ir::FsmIr;
-use crate::logic;
+use crate::validation::FsmStructure;
 
 pub mod enums;
 pub mod impls;
 pub mod structs;
 
 /// Main entry point for code generation.
-/// Orchestrates the 3-layer process: Validation (implicit input) -> IR -> Logic/Boilerplate.
-pub fn generate(fsm: &FsmIr, original_impl: &ItemImpl) -> TokenStream {
+/// Takes the validated FSM structure and the original impl block,
+/// generates all types, impls, and the event loop.
+pub fn generate(fsm: &FsmStructure, original_impl: &ItemImpl) -> TokenStream {
     let fsm_name = &fsm.fsm_name;
     let original_methods = &original_impl.items;
 
-    // 1. Logic Layer: Build semantic constructs
-    let event_arms = logic::build_event_arms(fsm);
-    let timeout_logic = logic::build_timeout_handler(fsm);
-
-    // 2. Boilerplate Layer: Render templates
+    // Generate type definitions
     let state_enum = enums::render_state_enum(fsm);
     let event_enum = enums::render_event_enum(fsm);
 
@@ -27,32 +23,28 @@ pub fn generate(fsm: &FsmIr, original_impl: &ItemImpl) -> TokenStream {
     let handle_struct = structs::render_handle_struct(fsm);
     let task_struct = structs::render_task_struct(fsm);
 
+    // Generate implementations
     let spawn_impl = impls::render_spawn(fsm);
-    let run_impl = impls::render_run(fsm, &event_arms, &timeout_logic);
+    let run_impl = impls::render_run(fsm);
     let handle_impl = impls::render_handle_impl(fsm);
     let task_impl = impls::render_task_impl(fsm);
 
-    // 3. Assembly
-    // Strip helper attributes from methods to avoid compiler errors
-    // Also remove associated types (Context, Error) as they are not allowed in inherent impls
+    // Strip macro attributes from original methods, remove associated types
     let cleaned_items: Vec<syn::ImplItem> = original_methods
         .iter()
-        .filter_map(|item| {
-            match item {
-                syn::ImplItem::Fn(method) => {
-                    let mut method = method.clone();
-                    method.attrs.retain(|attr| {
-                        !attr.path().is_ident("event")
-                            && !attr.path().is_ident("state_timeout")
-                            && !attr.path().is_ident("on_timeout")
-                    });
-                    Some(syn::ImplItem::Fn(method))
-                }
-                // We discard types (Context, Error) as they were consumed by validation/IR
-                syn::ImplItem::Type(_) => None,
-                // Keep other items if any (consts, macros, etc)
-                _ => Some(item.clone()),
+        .filter_map(|item| match item {
+            syn::ImplItem::Fn(method) => {
+                let mut method = method.clone();
+                method.attrs.retain(|attr| {
+                    !attr.path().is_ident("event")
+                        && !attr.path().is_ident("state_timeout")
+                        && !attr.path().is_ident("on_timeout")
+                        && !attr.path().is_ident("state")
+                });
+                Some(syn::ImplItem::Fn(method))
             }
+            syn::ImplItem::Type(_) => None,
+            _ => Some(item.clone()),
         })
         .collect();
 
@@ -68,7 +60,6 @@ pub fn generate(fsm: &FsmIr, original_impl: &ItemImpl) -> TokenStream {
             #spawn_impl
             #run_impl
 
-            // Preserve original methods (handlers)
             #(#cleaned_items)*
         }
 

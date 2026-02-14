@@ -138,6 +138,15 @@ impl FsmStructure {
     }
 
     /// Validate the FSM structure (graph reachability, etc.)
+    ///
+    /// This function constructs a directed graph (Digraph) where:
+    /// - **Nodes**: Represent FSM states.
+    /// - **Edges**: Represent transitions between states (triggered by event handlers).
+    ///
+    /// It performs the following checks:
+    /// 1. **Initial State Existence**: Ensures the configured initial state exists.
+    /// 2. **Target State Existence**: Ensures all transitions point to valid states.
+    /// 3. **Reachability**: Verifies that all states are reachable from the initial state (using graph traversal).
     fn validate(&self) -> syn::Result<()> {
         let mut graph = DiGraph::<&Ident, ()>::new();
         let mut nodes = HashMap::new();

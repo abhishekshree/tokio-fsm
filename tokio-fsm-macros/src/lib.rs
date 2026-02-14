@@ -6,6 +6,9 @@ use syn::{ItemImpl, parse_macro_input};
 
 mod attrs;
 mod codegen;
+mod helpers;
+mod ir;
+mod logic;
 mod validation;
 
 /// Main proc macro entry point.
@@ -29,9 +32,15 @@ pub fn fsm(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 fn generate_fsm(args: attrs::FsmArgs, input: ItemImpl) -> syn::Result<proc_macro2::TokenStream> {
-    // Parse the FSM structure
+    // 1. Validation Layer
+    // Parse the FSM structure and validate graph
     let fsm_structure = validation::FsmStructure::parse(args, input.clone())?;
 
-    // Generate the code
-    Ok(codegen::generate(&fsm_structure, &input))
+    // 2. IR Layer
+    // Transform into semantic Intermediate Representation
+    let ir = ir::FsmIr::from(&fsm_structure);
+
+    // 3. Codegen Layer
+    // Generate code from IR
+    Ok(codegen::generate(&ir, &input))
 }

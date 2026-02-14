@@ -74,13 +74,13 @@ async fn main() {
         id: 1,
         data: "test".to_string(),
     };
-    handle.send(Event::Job(job)).await.unwrap();
+    handle.send(WorkerFsmEvent::Job(job)).await.unwrap();
 
     // Wait a bit
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Send done event
-    handle.send(Event::Done).await.unwrap();
+    handle.send(WorkerFsmEvent::Done).await.unwrap();
 
     // Shutdown gracefully
     handle.shutdown_graceful();

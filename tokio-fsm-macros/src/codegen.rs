@@ -60,6 +60,7 @@ pub fn generate(fsm: &FsmStructure, original_impl: &syn::ItemImpl) -> TokenStrea
 
 fn generate_state_enum(fsm: &FsmStructure) -> TokenStream {
     let states: Vec<_> = fsm.states.iter().map(|s| &s.name).collect();
+    let state_enum_name = format_ident!("{}State", fsm.fsm_name);
 
     let state_structs: Vec<_> = fsm
         .states
@@ -69,9 +70,9 @@ fn generate_state_enum(fsm: &FsmStructure) -> TokenStream {
             quote! {
                 #[derive(Debug, Clone, Copy)]
                 pub struct #name;
-                impl From<#name> for State {
+                impl From<#name> for #state_enum_name {
                     fn from(_: #name) -> Self {
-                        State::#name
+                        #state_enum_name::#name
                     }
                 }
             }
@@ -80,7 +81,7 @@ fn generate_state_enum(fsm: &FsmStructure) -> TokenStream {
 
     quote! {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        pub enum State {
+        pub enum #state_enum_name {
             #(#states,)*
         }
 
@@ -102,9 +103,11 @@ fn generate_event_enum(fsm: &FsmStructure) -> TokenStream {
         })
         .collect();
 
+    let event_enum_name = format_ident!("{}Event", fsm.fsm_name);
+
     quote! {
         #[derive(Debug, Clone)]
-        pub enum Event {
+        pub enum #event_enum_name {
             #(#variants)*
         }
     }
@@ -113,9 +116,11 @@ fn generate_event_enum(fsm: &FsmStructure) -> TokenStream {
 fn generate_fsm_struct(fsm: &FsmStructure) -> TokenStream {
     let fsm_name = &fsm.fsm_name;
     let context_type = &fsm.context_type;
+    let state_enum_name = format_ident!("{}State", fsm.fsm_name);
+
     quote! {
         pub struct #fsm_name {
-            state: State,
+            state: #state_enum_name,
             context: #context_type,
         }
     }
@@ -123,12 +128,15 @@ fn generate_fsm_struct(fsm: &FsmStructure) -> TokenStream {
 
 fn generate_handle_struct(fsm: &FsmStructure) -> TokenStream {
     let handle_name = format_ident!("{}Handle", fsm.fsm_name);
+    let event_enum_name = format_ident!("{}Event", fsm.fsm_name);
+    let state_enum_name = format_ident!("{}State", fsm.fsm_name);
+
     quote! {
         #[derive(Clone)]
         pub struct #handle_name {
-            event_tx: tokio::sync::mpsc::Sender<Event>,
+            event_tx: tokio::sync::mpsc::Sender<#event_enum_name>,
             shutdown_tx: tokio::sync::watch::Sender<Option<tokio_fsm_core::ShutdownMode>>,
-            state_rx: tokio::sync::watch::Receiver<State>,
+            state_rx: tokio::sync::watch::Receiver<#state_enum_name>,
         }
     }
 }
@@ -160,6 +168,7 @@ fn generate_spawn_impl(fsm: &FsmStructure) -> TokenStream {
     let fsm_name = &fsm.fsm_name;
     let handle_name = format_ident!("{}Handle", fsm_name);
     let task_name = format_ident!("{}Task", fsm_name);
+    let state_enum_name = format_ident!("{}State", fsm_name);
     let context_type = &fsm.context_type;
     let initial_state = &fsm.initial_state;
     let channel_size = fsm.channel_size;
@@ -168,10 +177,10 @@ fn generate_spawn_impl(fsm: &FsmStructure) -> TokenStream {
         pub fn spawn(context: #context_type) -> (#handle_name, #task_name) {
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(#channel_size);
             let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(None);
-            let (state_tx, state_rx) = tokio::sync::watch::channel(State::#initial_state);
+            let (state_tx, state_rx) = tokio::sync::watch::channel(#state_enum_name::#initial_state);
 
             let fsm = #fsm_name {
-                state: State::#initial_state,
+                state: #state_enum_name::#initial_state,
                 context,
             };
 
@@ -194,6 +203,8 @@ fn generate_spawn_impl(fsm: &FsmStructure) -> TokenStream {
 fn generate_run_impl(fsm: &FsmStructure) -> TokenStream {
     let context_type = &fsm.context_type;
     let error_type = &fsm.error_type;
+    let event_enum_name = format_ident!("{}Event", fsm.fsm_name);
+    let state_enum_name = format_ident!("{}State", fsm.fsm_name);
     let event_arms = generate_event_match_arms(fsm);
 
     let timeout_handler = fsm.handlers.iter().find(|h| h.is_timeout_handler);
@@ -211,9 +222,9 @@ fn generate_run_impl(fsm: &FsmStructure) -> TokenStream {
     quote! {
         async fn run(
             mut self,
-            mut events: tokio::sync::mpsc::Receiver<Event>,
+            mut events: tokio::sync::mpsc::Receiver<#event_enum_name>,
             mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
-            state_tx: tokio::sync::watch::Sender<State>,
+            state_tx: tokio::sync::watch::Sender<#state_enum_name>,
         ) -> Result<#context_type, #error_type> {
             use std::pin::Pin;
             use tokio::time::Sleep;
@@ -272,6 +283,7 @@ fn generate_event_match_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
         if let Some(ref event) = handler.event {
             let method_name = &handler.method.sig.ident;
             let event_name = &event.name;
+            let event_enum_name = format_ident!("{}Event", fsm.fsm_name);
 
             let is_result = match &handler.method.sig.output {
                 syn::ReturnType::Type(_, ty) => {
@@ -289,10 +301,18 @@ fn generate_event_match_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
             };
 
             let timeout_reset = if let Some(ref st) = handler.state_timeout {
-                let duration = &st.duration;
+                let duration_str = st.duration.value();
+                let duration = match humantime::parse_duration(&duration_str) {
+                    Ok(d) => {
+                        let secs = d.as_secs();
+                        let nanos = d.subsec_nanos();
+                        quote! { std::time::Duration::new(#secs, #nanos) }
+                    }
+                    Err(_) => quote! { std::time::Duration::from_secs(0) }, // Should be validated earlier or handled
+                };
+
                 quote! {
-                    let d = tokio_fsm_core::parse_duration(#duration).expect("Invalid duration");
-                    timeout = Some(Box::pin(tokio::time::sleep(d)));
+                    timeout = Some(Box::pin(tokio::time::sleep(#duration)));
                 }
             } else {
                 quote! { timeout = None; }
@@ -339,7 +359,7 @@ fn generate_event_match_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
             };
 
             arms.push(quote! {
-                (_, Event::#event_name #payload_pattern) => {
+                (_, #event_enum_name::#event_name #payload_pattern) => {
                     #arm_inner
                 }
             });
@@ -351,13 +371,16 @@ fn generate_event_match_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
 
 fn generate_handle_impl(fsm: &FsmStructure) -> TokenStream {
     let handle_name = format_ident!("{}Handle", fsm.fsm_name);
+    let event_enum_name = format_ident!("{}Event", fsm.fsm_name);
+    let state_enum_name = format_ident!("{}State", fsm.fsm_name);
+
     quote! {
         impl #handle_name {
-            pub async fn send(&self, event: Event) -> Result<(), tokio::sync::mpsc::error::SendError<Event>> {
+            pub async fn send(&self, event: #event_enum_name) -> Result<(), tokio::sync::mpsc::error::SendError<#event_enum_name>> {
                 self.event_tx.send(event).await
             }
 
-            pub fn try_send(&self, event: Event) -> Result<(), tokio::sync::mpsc::error::TrySendError<Event>> {
+            pub fn try_send(&self, event: #event_enum_name) -> Result<(), tokio::sync::mpsc::error::TrySendError<#event_enum_name>> {
                 self.event_tx.try_send(event)
             }
 
@@ -369,11 +392,11 @@ fn generate_handle_impl(fsm: &FsmStructure) -> TokenStream {
                 let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Immediate));
             }
 
-            pub fn current_state(&self) -> State {
+            pub fn current_state(&self) -> #state_enum_name {
                 *self.state_rx.borrow()
             }
 
-            pub async fn wait_for_state(&mut self, target: State) -> Result<(), tokio::sync::watch::error::RecvError> {
+            pub async fn wait_for_state(&mut self, target: #state_enum_name) -> Result<(), tokio::sync::watch::error::RecvError> {
                 loop {
                     if *self.state_rx.borrow() == target {
                         return Ok(());

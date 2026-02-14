@@ -111,14 +111,14 @@ async fn main() {
     let macro_ctx = Context { count: 0 };
     let (macro_handle, _macro_task) = MacroFsm::spawn(macro_ctx);
     macro_handle
-        .send(Event::Start(Job { id: 1 }))
+        .send(MacroFsmEvent::Start(Job { id: 1 }))
         .await
         .unwrap();
     println!("Macro state: {:?}", macro_handle.current_state());
 
     // Notice that MacroFsm automatically generated:
-    // 1. Event enum with Job payload
-    // 2. State enum (Idle, Processing)
+    // 1. Event enum with Job payload (MacroFsmEvent)
+    // 2. State enum (MacroFsmState)
     // 3. Handle and Task structs
     // 4. Thread-safe event loop with graceful shutdown support
     // 5. State struct tags for Transition<Processing>

@@ -48,7 +48,7 @@ impl MyFsm {
 async fn main() {
     let (handle, task) = MyFsm::spawn(MyContext::default());
     
-    handle.send(Event::Start).await.unwrap();
+    handle.send(MyFsmEvent::Start).await.unwrap();
     println!("Current state: {:?}", handle.current_state());
     
     handle.shutdown_graceful();

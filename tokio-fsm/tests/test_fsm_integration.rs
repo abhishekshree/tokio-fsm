@@ -52,22 +52,34 @@ async fn test_fsm_full_lifecycle() {
     let context = TestContext::default();
     let (handle, task) = IntegrationFsm::spawn(context);
 
-    assert_eq!(handle.current_state(), State::Idle);
+    assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
 
     // Idle -> Pending
-    handle.send(Event::Start).await.unwrap();
-    handle.clone().wait_for_state(State::Pending).await.unwrap();
+    handle.send(IntegrationFsmEvent::Start).await.unwrap();
+    handle
+        .clone()
+        .wait_for_state(IntegrationFsmState::Pending)
+        .await
+        .unwrap();
 
     // Pending -> Active (with data)
     handle
-        .send(Event::Process("task1".to_string()))
+        .send(IntegrationFsmEvent::Process("task1".to_string()))
         .await
         .unwrap();
-    handle.clone().wait_for_state(State::Active).await.unwrap();
+    handle
+        .clone()
+        .wait_for_state(IntegrationFsmState::Active)
+        .await
+        .unwrap();
 
     // Active -> Done
-    handle.send(Event::Finish).await.unwrap();
-    handle.clone().wait_for_state(State::Done).await.unwrap();
+    handle.send(IntegrationFsmEvent::Finish).await.unwrap();
+    handle
+        .clone()
+        .wait_for_state(IntegrationFsmState::Done)
+        .await
+        .unwrap();
 
     // Shutdown and verify context
     handle.shutdown_graceful();
@@ -83,12 +95,16 @@ async fn test_fsm_timeout() {
     let (handle, task) = IntegrationFsm::spawn(context);
 
     // Idle -> Pending
-    handle.send(Event::Start).await.unwrap();
-    handle.clone().wait_for_state(State::Pending).await.unwrap();
+    handle.send(IntegrationFsmEvent::Start).await.unwrap();
+    handle
+        .clone()
+        .wait_for_state(IntegrationFsmState::Pending)
+        .await
+        .unwrap();
 
     // Wait for timeout (100ms)
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(handle.current_state(), State::Failed);
+    assert_eq!(handle.current_state(), IntegrationFsmState::Failed);
 
     handle.shutdown_immediate();
     let final_context = task.await.unwrap();
@@ -101,9 +117,9 @@ async fn test_fsm_graceful_shutdown() {
     let (handle, task) = IntegrationFsm::spawn(context);
 
     // Queue up events
-    handle.send(Event::Start).await.unwrap();
+    handle.send(IntegrationFsmEvent::Start).await.unwrap();
     handle
-        .send(Event::Process("queued".to_string()))
+        .send(IntegrationFsmEvent::Process("queued".to_string()))
         .await
         .unwrap();
 

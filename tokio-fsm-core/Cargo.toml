@@ -11,5 +11,4 @@ readme = "../README.md"
 description = "Core runtime types for tokio-fsm"
 
 [dependencies]
-humantime = "2.3.0"
 tokio = { workspace = true }

@@ -1,7 +1,5 @@
 //! Core runtime types for tokio-fsm.
 
-use std::time::Duration;
-
 /// Represents a state transition in the FSM.
 #[derive(Debug)]
 pub enum Transition<T> {
@@ -32,12 +30,4 @@ pub enum ShutdownMode {
     /// Immediate shutdown: terminate immediately without processing remaining
     /// events.
     Immediate,
-}
-
-/// Internal utility to parse durations using `humantime`.
-///
-/// This is public for use by the proc macro, but not part of the stable API.
-#[doc(hidden)]
-pub fn parse_duration(s: &str) -> Result<Duration, humantime::DurationError> {
-    s.parse::<humantime::Duration>().map(|d| d.into())
 }

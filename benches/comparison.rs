@@ -1,7 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use tokio::sync::mpsc;
+use tokio_fsm::Transition;
 use tokio_fsm::fsm;
-use tokio_fsm_core::Transition;
 
 #[derive(Debug, Clone, Default)]
 pub struct Context {
@@ -65,7 +65,7 @@ impl ManualFsmHandle {
         let (tx, mut rx) = mpsc::channel(100);
         let (state_tx, state_rx) = tokio::sync::watch::channel(ManualState::Idle);
         let (shutdown_tx, mut shutdown_rx) =
-            tokio::sync::watch::channel(None::<tokio_fsm_core::ShutdownMode>);
+            tokio::sync::watch::channel(None::<tokio_fsm::ShutdownMode>);
 
         let handle = tokio::spawn(async move {
             let mut fsm = ManualFsm { context };

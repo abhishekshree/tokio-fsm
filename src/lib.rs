@@ -25,7 +25,9 @@
 //! }
 //! ```
 
+mod core;
+
 #[doc(inline)]
-pub use tokio_fsm_core::*;
+pub use crate::core::*;
 #[doc(inline)]
 pub use tokio_fsm_macros::*;

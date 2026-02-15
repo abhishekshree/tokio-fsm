@@ -754,16 +754,7 @@ dependencies = [
  "criterion",
  "thiserror",
  "tokio",
- "tokio-fsm-core",
  "tokio-fsm-macros",
-]
-
-[[package]]
-name = "tokio-fsm-core"
-version = "0.1.3"
-dependencies = [
- "thiserror",
- "tokio",
 ]
 
 [[package]]

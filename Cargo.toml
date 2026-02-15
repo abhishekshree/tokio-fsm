@@ -1,9 +1,5 @@
 [workspace]
-members = [
-    ".",
-    "tokio-fsm-core",
-    "tokio-fsm-macros",
-]
+members = [".", "tokio-fsm-macros"]
 exclude = ["examples/axum_fsm"]
 resolver = "2"
 
@@ -17,7 +13,6 @@ repository = "https://github.com/abhishekshree/tokio-fsm"
 readme = "README.md"
 
 [workspace.dependencies]
-tokio-fsm-core = { version = "0.1.3", path = "tokio-fsm-core" }
 tokio-fsm-macros = { version = "0.1.3", path = "tokio-fsm-macros" }
 
 tokio = { version = "1.0", features = ["sync", "rt", "time", "macros"] }
@@ -42,7 +37,6 @@ categories = [
 ]
 
 [dependencies]
-tokio-fsm-core = { workspace = true }
 tokio-fsm-macros = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }

@@ -10,35 +10,43 @@ mod validation;
 
 /// Generates an asynchronous Finite State Machine (FSM) from an `impl` block.
 ///
-/// This attribute transforms a standard Rust `impl` block into a compile-time validated
-/// state machine driven by a background Tokio task.
+/// This attribute transforms a standard Rust `impl` block into a compile-time
+/// validated state machine driven by a background Tokio task.
 ///
 /// # Arguments
 ///
 /// * `initial = StateName`: (Required) The name of the starting state.
-/// * `channel_size = usize`: (Optional) The capacity of the internal event queue (default: 100).
+/// * `channel_size = usize`: (Optional) The capacity of the internal event
+///   queue (default: 100).
 ///
 /// # Generated Types
 ///
-/// The macro generates several types based on the name of the `impl` block (e.g., `WorkerFsm`):
+/// The macro generates several types based on the name of the `impl` block
+/// (e.g., `WorkerFsm`):
 ///
 /// * `WorkerFsmState`: An enum containing all discovered states.
-/// * `WorkerFsmEvent`: An enum containing all discovered events and their data payloads.
-/// * `WorkerFsmHandle`: A cloneable handle used to interact with the FSM (send events, query state).
-/// * `WorkerFsmTask`: A `Future` that must be awaited to run the FSM. Resolves to `Result<Context, TaskError>`.
+/// * `WorkerFsmEvent`: An enum containing all discovered events and their data
+///   payloads.
+/// * `WorkerFsmHandle`: A cloneable handle used to interact with the FSM (send
+///   events, query state).
+/// * `WorkerFsmTask`: A `Future` that must be awaited to run the FSM. Resolves
+///   to `Result<Context, TaskError>`.
 ///
 /// # Handlers & Attributes
 ///
 /// Within the `impl` block, use the following attributes on `async fn` methods:
 ///
-/// * `#[on(state = S, event = E)]`: Maps a handler to a specific state and event trigger.
-/// * `#[state_timeout(duration = "30s")]`: Configures a timeout for the state reached *after* this transition.
-/// * `#[on_timeout]`: Marks a method as the handler to call when a state timeout occurs.
+/// * `#[on(state = S, event = E)]`: Maps a handler to a specific state and
+///   event trigger.
+/// * `#[state_timeout(duration = "30s")]`: Configures a timeout for the state
+///   reached *after* this transition.
+/// * `#[on_timeout]`: Marks a method as the handler to call when a state
+///   timeout occurs.
 ///
 /// # Example
 ///
 /// ```rust
-/// use tokio_fsm::{fsm, Transition};
+/// use tokio_fsm::{Transition, fsm};
 ///
 /// pub struct MyContext;
 ///

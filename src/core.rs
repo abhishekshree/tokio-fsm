@@ -3,7 +3,8 @@
 /// Represents a state transition in the FSM.
 ///
 /// This type is returned by FSM handlers to indicate which state the machine
-/// should transition to next. It is usually created via the [`Transition::to`] helper.
+/// should transition to next. It is usually created via the [`Transition::to`]
+/// helper.
 ///
 /// # Example
 ///
@@ -45,7 +46,8 @@ impl<T> Transition<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShutdownMode {
     /// Graceful shutdown: The event loop continues to process all remaining
-    /// events currently in the queue before terminating and returning the context.
+    /// events currently in the queue before terminating and returning the
+    /// context.
     Graceful,
     /// Immediate shutdown: The event loop terminates immediately, dropping any
     /// unprocessed events in the queue, and returns the current context.
@@ -55,11 +57,13 @@ pub enum ShutdownMode {
 /// Error type returned by the FSM background task.
 ///
 /// This enum distinguishes between logical errors returned by your FSM handlers
-/// and runtime failures of the Tokio task itself (e.g., panics or cancellation).
+/// and runtime failures of the Tokio task itself (e.g., panics or
+/// cancellation).
 ///
 /// # Type Parameters
 ///
-/// * `E`: The logical error type defined in your `impl` block via `type Error = ...;`.
+/// * `E`: The logical error type defined in your `impl` block via `type Error =
+///   ...;`.
 #[derive(Debug, thiserror::Error)]
 pub enum TaskError<E> {
     /// The FSM handler returned a logical error.

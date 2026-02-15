@@ -28,6 +28,7 @@
 mod core;
 
 #[doc(inline)]
-pub use crate::core::*;
-#[doc(inline)]
 pub use tokio_fsm_macros::*;
+
+#[doc(inline)]
+pub use crate::core::*;

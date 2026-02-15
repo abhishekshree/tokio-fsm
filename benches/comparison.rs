@@ -1,7 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use tokio::sync::mpsc;
-use tokio_fsm::Transition;
-use tokio_fsm::fsm;
+use tokio_fsm::{Transition, fsm};
 
 #[derive(Debug, Clone, Default)]
 pub struct Context {

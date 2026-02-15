@@ -51,7 +51,7 @@ pub fn render_run(fsm: &FsmStructure) -> TokenStream {
         async fn run(
             mut self,
             mut events: tokio::sync::mpsc::Receiver<#event_enum_name>,
-            mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm_core::ShutdownMode>>,
+            mut shutdown: tokio::sync::watch::Receiver<Option<tokio_fsm::ShutdownMode>>,
             state_tx: tokio::sync::watch::Sender<#state_enum_name>,
         ) -> Result<#context_type, #error_type> {
             let sleep = tokio::time::sleep(tokio::time::Duration::from_secs(3153600000));
@@ -67,8 +67,8 @@ pub fn render_run(fsm: &FsmStructure) -> TokenStream {
                         let mode = *shutdown.borrow();
                         if let Some(mode) = mode {
                             match mode {
-                                tokio_fsm_core::ShutdownMode::Immediate => return Ok(self.context),
-                                tokio_fsm_core::ShutdownMode::Graceful => {
+                                tokio_fsm::ShutdownMode::Immediate => return Ok(self.context),
+                                tokio_fsm::ShutdownMode::Graceful => {
                                     while let Ok(event) = events.try_recv() {
                                          match (self.state, event) {
                                             #(#event_arms)*
@@ -130,12 +130,12 @@ pub fn render_handle_impl(fsm: &FsmStructure) -> TokenStream {
 
             /// Initiates a graceful shutdown. Processes remaining events before exiting.
             pub fn shutdown_graceful(&self) {
-                let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Graceful));
+                let _ = self.shutdown_tx.send(Some(tokio_fsm::ShutdownMode::Graceful));
             }
 
             /// Initiates an immediate shutdown. Drops unprocessed events.
             pub fn shutdown_immediate(&self) {
-                let _ = self.shutdown_tx.send(Some(tokio_fsm_core::ShutdownMode::Immediate));
+                let _ = self.shutdown_tx.send(Some(tokio_fsm::ShutdownMode::Immediate));
             }
         }
     }
@@ -148,13 +148,13 @@ pub fn render_task_impl(fsm: &FsmStructure) -> TokenStream {
 
     quote! {
         impl std::future::Future for #task_name {
-            type Output = Result<#context_type, tokio_fsm_core::TaskError<#error_type>>;
+            type Output = Result<#context_type, tokio_fsm::TaskError<#error_type>>;
 
             fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
                 match std::pin::Pin::new(&mut self.handle).poll(cx) {
                     std::task::Poll::Ready(Ok(Ok(res))) => std::task::Poll::Ready(Ok(res)),
-                    std::task::Poll::Ready(Ok(Err(e))) => std::task::Poll::Ready(Err(tokio_fsm_core::TaskError::Fsm(e))),
-                    std::task::Poll::Ready(Err(e)) => std::task::Poll::Ready(Err(tokio_fsm_core::TaskError::Join(e))),
+                    std::task::Poll::Ready(Ok(Err(e))) => std::task::Poll::Ready(Err(tokio_fsm::TaskError::Fsm(e))),
+                    std::task::Poll::Ready(Err(e)) => std::task::Poll::Ready(Err(tokio_fsm::TaskError::Join(e))),
                     std::task::Poll::Pending => std::task::Poll::Pending,
                 }
             }

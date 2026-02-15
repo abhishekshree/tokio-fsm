@@ -25,5 +25,7 @@
 //! }
 //! ```
 
-pub use tokio_fsm_core::{ShutdownMode, TaskError, Transition};
-pub use tokio_fsm_macros::fsm;
+#[doc(inline)]
+pub use tokio_fsm_core::*;
+#[doc(inline)]
+pub use tokio_fsm_macros::*;

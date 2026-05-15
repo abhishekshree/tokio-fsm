@@ -33,7 +33,7 @@ mod validation;
 /// * `WorkerFsmEvent`: An enum containing all discovered events and their data
 ///   payloads.
 /// * `WorkerFsmHandle`: A cloneable handle used to interact with the FSM (send
-///   events, query state).
+///   events, enqueue raw events, query state).
 /// * `WorkerFsmTask`: A [`Future`](std::future::Future) that must be awaited to
 ///   run the FSM. Resolves to `Result<Context, TaskError<E>>`.
 ///
@@ -50,6 +50,8 @@ mod validation;
 ///
 /// A single handler method cannot combine `#[on(...)]` and `#[on_timeout]`.
 /// Define separate methods for event-driven and timeout-driven transitions.
+/// More than one handler for the same `(state, event)` pair is rejected at
+/// compile time.
 ///
 /// Event and timeout handlers may return:
 ///

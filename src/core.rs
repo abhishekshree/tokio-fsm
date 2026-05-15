@@ -78,3 +78,26 @@ pub enum TaskError<E> {
     #[error("Task join error: {0}")]
     Join(#[from] tokio::task::JoinError),
 }
+
+/// Error returned by generated `send` handle methods.
+///
+/// Sending validates the event against the FSM's current observed state before
+/// enqueueing it. This catches events that cannot be handled in the current
+/// state without relying on the background task to drop them later.
+#[derive(Debug, thiserror::Error)]
+pub enum SendError<E, S> {
+    /// The event has no handler for the current state.
+    #[error("event is not handled in the current FSM state")]
+    Unhandled {
+        /// State observed when the send was attempted.
+        state: S,
+        /// Event that was rejected.
+        event: E,
+    },
+    /// The FSM event queue is closed.
+    #[error("FSM event queue is closed")]
+    Closed(
+        /// Event that could not be enqueued.
+        E,
+    ),
+}

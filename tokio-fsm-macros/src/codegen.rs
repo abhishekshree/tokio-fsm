@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{ImplItem, ItemImpl};
+use syn::{ImplItem, ItemImpl, visit_mut::VisitMut};
 
 use crate::validation::FsmStructure;
 
@@ -50,6 +50,7 @@ pub fn generate(fsm: &FsmStructure, original_impl: &ItemImpl) -> syn::Result<Tok
                         && !attr.path().is_ident("state_timeout")
                         && !attr.path().is_ident("on_timeout")
                 });
+                rewrite_state_markers(fsm, &mut method);
                 Some(ImplItem::Fn(method))
             }
             ImplItem::Type(_) => None,
@@ -77,4 +78,46 @@ pub fn generate(fsm: &FsmStructure, original_impl: &ItemImpl) -> syn::Result<Tok
         #task_impl
         #task_drop
     })
+}
+
+fn rewrite_state_markers(fsm: &FsmStructure, method: &mut syn::ImplItemFn) {
+    struct StateMarkerRewriter<'a> {
+        fsm: &'a FsmStructure,
+    }
+
+    impl StateMarkerRewriter<'_> {
+        fn marker_for(&self, ident: &syn::Ident) -> Option<syn::Ident> {
+            self.fsm
+                .states
+                .iter()
+                .any(|state| state.name == *ident)
+                .then(|| self.fsm.state_marker_ident(ident))
+        }
+    }
+
+    impl VisitMut for StateMarkerRewriter<'_> {
+        fn visit_type_path_mut(&mut self, node: &mut syn::TypePath) {
+            syn::visit_mut::visit_type_path_mut(self, node);
+
+            if node.qself.is_none() && node.path.segments.len() == 1 {
+                let ident = &node.path.segments[0].ident;
+                if let Some(marker) = self.marker_for(ident) {
+                    node.path.segments[0].ident = marker;
+                }
+            }
+        }
+
+        fn visit_expr_path_mut(&mut self, node: &mut syn::ExprPath) {
+            syn::visit_mut::visit_expr_path_mut(self, node);
+
+            if node.qself.is_none() && node.path.segments.len() == 1 {
+                let ident = &node.path.segments[0].ident;
+                if let Some(marker) = self.marker_for(ident) {
+                    node.path.segments[0].ident = marker;
+                }
+            }
+        }
+    }
+
+    StateMarkerRewriter { fsm }.visit_impl_item_fn_mut(method);
 }

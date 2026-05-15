@@ -5,13 +5,13 @@
 [![CI](https://github.com/abhishekshree/tokio-fsm/actions/workflows/ci.yml/badge.svg)](https://github.com/abhishekshree/tokio-fsm/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Compile-time validated, zero-overhead async finite state machines for [Tokio](https://tokio.rs).
+Compile-time validated, actor-style async finite state machines for [Tokio](https://tokio.rs).
 
-`tokio-fsm` turns a standard Rust `impl` block into a high-performance, Tokio-driven state machine. It eliminates the boilerplate of manual event loops, channel management, and timeout wiring while ensuring that your FSM logic is verified at compile-time.
+`tokio-fsm` turns a standard Rust `impl` block into a Tokio-driven state machine with generated state/event types, a handle API, lifecycle management, and compile-time graph validation. It removes the boilerplate of manual event loops, channel management, and timeout wiring while keeping handler behavior explicit Rust code.
 
 ## Why tokio-fsm?
 
-- **Zero Overhead**: Generates the same tight `match` loops you would write by hand. No runtime engine, no virtual dispatch, no heavy allocations.
+- **Actor-Style Runtime**: Generates a Tokio task backed by bounded `mpsc` events, `watch` state observation, cancellation, and a direct `match`-based dispatcher.
 - **Async First**: All handlers are native `async fn` methods.
 - **Compile-Time Safety**: Validates state reachability and transition contracts during compilation using `petgraph`.
 - **Deterministic Lifecycle**: Explicit ownership model via a `Task` handle that ensures resources are cleaned up if the caller drops the FSM.
@@ -48,7 +48,7 @@ async fn main() {
     // Spawning returns a Handle and a Task. The Task must be awaited or held.
     let (handle, task) = MyFsm::spawn(MyContext::default());
 
-    // Send events via the Handle
+    // Send validates that the current observed state can handle the event.
     handle.send(MyFsmEvent::Start).await.unwrap();
     
     // Observer state changes
@@ -84,7 +84,8 @@ Handlers are `async fn` methods that define how the machine moves between states
 
 - **Task Drop**: If you drop the `MyFsmTask` handle, the FSM is aborted immediately. Spawning is marked `#[must_use]` to prevent accidental leaks.
 - **Handle Drop**: When the last `MyFsmHandle` is dropped, the internal event channel is closed. The FSM will exit after processing any remaining queued events.
-- **Graceful Shutdown**: Call `handle.shutdown()` to trigger a controlled exit, then `await` the task to retrieve the final context.
+- **Shutdown**: Call `handle.shutdown()` to cancel the FSM's child token, then `await` the task to retrieve the final context. Cancellation can interrupt an in-flight handler future.
+- **Checked Events**: `send` validates the event against the current observed state before enqueueing. Use `enqueue` / `try_enqueue` only when you intentionally want raw queue semantics; an event with no handler in the eventual runtime state is dropped by the dispatcher.
 
 ## Configuration and Attributes
 

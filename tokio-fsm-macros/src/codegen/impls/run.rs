@@ -21,6 +21,7 @@ pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
     let fsm_name_str = fsm.fsm_name.to_string();
 
     let event_arms = build_event_arms(fsm)?;
+    let event_name_arms = build_event_name_arms(fsm);
     let timeout_logic = build_timeout_handler(fsm)?;
 
     let tracing_span = if fsm.tracing {
@@ -57,7 +58,10 @@ pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
     let unmatched_arm = if fsm.tracing {
         quote! {
             (state, event) => {
-                ::tokio_fsm::tracing::warn!(state = ?state, event = ?event, "Event dropped: No handler for this state");
+                let event_name = match event {
+                    #(#event_name_arms)*
+                };
+                ::tokio_fsm::tracing::warn!(state = ?state, event = event_name, "Event dropped: No handler for this state");
             }
         }
     } else {
@@ -105,6 +109,27 @@ pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
             #run_loop_await
         }
     })
+}
+
+fn build_event_name_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
+    let event_enum = fsm.event_enum_ident();
+
+    fsm.events
+        .iter()
+        .map(|event| {
+            let event_name = &event.name;
+            let event_name_str = event_name.to_string();
+            if event.payload_type.is_some() {
+                quote! {
+                    #event_enum::#event_name(_) => #event_name_str,
+                }
+            } else {
+                quote! {
+                    #event_enum::#event_name => #event_name_str,
+                }
+            }
+        })
+        .collect()
 }
 
 fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {

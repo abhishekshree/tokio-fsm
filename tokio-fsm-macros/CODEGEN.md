@@ -29,7 +29,8 @@ This crate follows a simple pipeline:
 - `src/codegen/impls/run.rs`
   Event loop, timeout loop, cancellation, and tracing instrumentation.
 - `src/codegen/impls/handle.rs`
-  Public handle methods such as `send`, `try_send`, and `wait_for_state`.
+  Public handle methods such as `send`, `enqueue`, `try_enqueue`, and
+  `wait_for_state`.
 - `src/codegen/impls/task.rs`
   Task future wrapper and drop behavior.
 - `src/codegen/impls/helpers.rs`

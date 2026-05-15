@@ -17,6 +17,7 @@ impl FsmStructure {
         let has_timeout_handler = self.validate_timeout_contract()?;
         let states_with_timeout = self.identify_states_with_timeout(has_timeout_handler)?;
         self.validate_state_timeout_consistency()?;
+        self.validate_unique_event_handlers()?;
 
         let mut graph = DiGraph::<&Ident, ()>::new();
         let mut nodes = HashMap::new();
@@ -32,6 +33,32 @@ impl FsmStructure {
 
         self.build_reachability_graph(&mut graph, &nodes, &states_with_timeout)?;
         self.check_reachability(&graph, initial_node, &nodes)?;
+
+        Ok(())
+    }
+
+    fn validate_unique_event_handlers(&self) -> syn::Result<()> {
+        let mut handlers_by_transition: HashMap<(String, String), &syn::Ident> = HashMap::new();
+
+        for handler in &self.handlers {
+            let Some(event) = &handler.event else {
+                continue;
+            };
+
+            for source in &handler.source_states {
+                let key = (source.to_string(), event.name.to_string());
+                if let Some(existing_handler) = handlers_by_transition.get(&key) {
+                    return Err(syn::Error::new_spanned(
+                        &handler.method.sig.ident,
+                        format!(
+                            "Duplicate handler for state '{}' and event '{}': '{}' and '{}'",
+                            source, event.name, existing_handler, handler.method.sig.ident
+                        ),
+                    ));
+                }
+                handlers_by_transition.insert(key, &handler.method.sig.ident);
+            }
+        }
 
         Ok(())
     }

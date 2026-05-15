@@ -11,14 +11,16 @@ pub fn render_state_enum(fsm: &FsmStructure) -> TokenStream {
         .states
         .iter()
         .map(|s| {
-            let name = &s.name;
+            let marker_name = fsm.state_marker_ident(&s.name);
+            let state_name = &s.name;
             let enum_name = &state_enum_name;
             quote! {
+                #[doc(hidden)]
                 #[derive(Debug, Clone, Copy)]
-                pub struct #name;
-                impl From<#name> for #enum_name {
-                    fn from(_: #name) -> Self {
-                        #enum_name::#name
+                pub struct #marker_name;
+                impl From<#marker_name> for #enum_name {
+                    fn from(_: #marker_name) -> Self {
+                        #enum_name::#state_name
                     }
                 }
             }
@@ -62,12 +64,29 @@ pub fn render_event_enum(fsm: &FsmStructure) -> TokenStream {
         })
         .collect();
 
+    let debug_arms: Vec<TokenStream> = fsm
+        .events
+        .iter()
+        .map(|event| {
+            let event_name = &event.name;
+            let event_name_str = event_name.to_string();
+            if event.payload_type.is_some() {
+                quote! {
+                    Self::#event_name(_) => f.write_str(#event_name_str),
+                }
+            } else {
+                quote! {
+                    Self::#event_name => f.write_str(#event_name_str),
+                }
+            }
+        })
+        .collect();
+
     let event_enum_name = fsm.event_enum_ident();
 
-    if fsm.serde {
+    let event_enum = if fsm.serde {
         quote! {
             ::tokio_fsm::__tokio_fsm_serde_derive! {
-                #[derive(Debug, Clone)]
                 pub enum #event_enum_name {
                     #(#variants)*
                 }
@@ -75,9 +94,20 @@ pub fn render_event_enum(fsm: &FsmStructure) -> TokenStream {
         }
     } else {
         quote! {
-            #[derive(Debug, Clone)]
             pub enum #event_enum_name {
                 #(#variants)*
+            }
+        }
+    };
+
+    quote! {
+        #event_enum
+
+        impl ::std::fmt::Debug for #event_enum_name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                match self {
+                    #(#debug_arms)*
+                }
             }
         }
     }

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::{SendError, Transition, fsm};
 
 #[derive(Debug, Default)]
 pub struct TestContext {
@@ -117,9 +117,9 @@ async fn test_fsm_channel_close_shutdown() {
     let (handle, task) = IntegrationFsm::spawn(context);
 
     // Queue up events
-    handle.send(IntegrationFsmEvent::Start).await.unwrap();
+    handle.enqueue(IntegrationFsmEvent::Start).await.unwrap();
     handle
-        .send(IntegrationFsmEvent::Process("queued".to_string()))
+        .enqueue(IntegrationFsmEvent::Process("queued".to_string()))
         .await
         .unwrap();
 
@@ -131,4 +131,39 @@ async fn test_fsm_channel_close_shutdown() {
     // Once the channel is closed, the FSM drains queued events before exiting.
     assert_eq!(final_context.transition_count, 2);
     assert_eq!(final_context.job_data, vec!["queued"]);
+}
+
+#[tokio::test]
+async fn test_send_rejects_unhandled_event_without_enqueueing() {
+    let context = TestContext::default();
+    let (handle, task) = IntegrationFsm::spawn(context);
+
+    match handle.send(IntegrationFsmEvent::Finish).await {
+        Err(SendError::Unhandled {
+            state: IntegrationFsmState::Idle,
+            event: IntegrationFsmEvent::Finish,
+        }) => {}
+        other => panic!("expected send to reject Finish in Idle, got {other:?}"),
+    }
+
+    assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
+
+    handle.shutdown();
+    let final_context = task.await.unwrap();
+    assert_eq!(final_context.transition_count, 0);
+    assert!(final_context.job_data.is_empty());
+}
+
+#[tokio::test]
+async fn test_enqueue_preserves_raw_queue_semantics() {
+    let context = TestContext::default();
+    let (handle, task) = IntegrationFsm::spawn(context);
+
+    handle.enqueue(IntegrationFsmEvent::Finish).await.unwrap();
+    assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
+
+    handle.shutdown();
+    let final_context = task.await.unwrap();
+    assert_eq!(final_context.transition_count, 0);
+    assert!(final_context.job_data.is_empty());
 }

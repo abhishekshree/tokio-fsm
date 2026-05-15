@@ -1,13 +1,5 @@
 error: Event 'Start' has inconsistent payload types across handlers: expected 'String', found 'u32'
   --> tests/ui/payload_mismatch.rs:13:32
    |
-13 |     #[on(state = Idle, event = Start)]
+13 |     #[on(state = Idle, event = Start, next = Idle)]
    |                                ^^^^^
-
-warning: unused import: `Transition`
- --> tests/ui/payload_mismatch.rs:1:17
-  |
-1 | use tokio_fsm::{Transition, fsm};
-  |                 ^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

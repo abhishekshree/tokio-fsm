@@ -1,4 +1,4 @@
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::fsm;
 
 pub struct NonClonePayload(String);
 
@@ -7,10 +7,9 @@ impl NonClonePayloadFsm {
     type Context = ();
     type Error = std::convert::Infallible;
 
-    #[on(state = Idle, event = Start)]
-    async fn start(&mut self, payload: NonClonePayload) -> Transition<Done> {
+    #[on(state = Idle, event = Start, next = Done)]
+    async fn start(&mut self, payload: NonClonePayload) {
         let _ = payload;
-        Transition::to(Done)
     }
 }
 

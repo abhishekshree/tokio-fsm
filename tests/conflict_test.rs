@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 #[cfg(test)]
 mod tests {
-    use tokio_fsm::{Transition, fsm};
+    use tokio_fsm::fsm;
 
     // FSM 1
     #[derive(Debug, Default)]
@@ -12,10 +12,8 @@ mod tests {
         type Context = Context1;
         type Error = std::convert::Infallible;
 
-        #[on(state = Idle1, event = Start)]
-        async fn start(&mut self) -> Transition<Running1> {
-            Transition::to(Running1)
-        }
+        #[on(state = Idle1, event = Start, next = Running1)]
+        async fn start(&mut self) {}
     }
 
     // FSM 2
@@ -27,10 +25,8 @@ mod tests {
         type Context = Context2;
         type Error = std::convert::Infallible;
 
-        #[on(state = Idle2, event = Start)]
-        async fn start(&mut self) -> Transition<Running2> {
-            Transition::to(Running2)
-        }
+        #[on(state = Idle2, event = Start, next = Running2)]
+        async fn start(&mut self) {}
     }
 
     #[tokio::test]

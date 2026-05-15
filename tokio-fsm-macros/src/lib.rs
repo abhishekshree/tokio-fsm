@@ -33,7 +33,7 @@ mod validation;
 /// * `WorkerFsmEvent`: An enum containing all discovered events and their data
 ///   payloads.
 /// * `WorkerFsmHandle`: A cloneable handle used to interact with the FSM (send
-///   events, enqueue raw events, query state).
+///   events, query state).
 /// * `WorkerFsmTask`: A [`Future`](std::future::Future) that must be awaited to
 ///   run the FSM. Resolves to `Result<Context, TaskError<E>>`.
 ///
@@ -41,28 +41,25 @@ mod validation;
 ///
 /// Within the `impl` block, use the following attributes on `async fn` methods:
 ///
-/// * `#[on(state = S, event = E)]`: Maps a handler to a specific state and
-///   event trigger.
-/// * `#[state_timeout(duration = "30s")]`: Configures a timeout for the state
-///   reached *after* this transition.
-/// * `#[on_timeout]`: Marks a method as the handler to call when a state
-///   timeout occurs.
+/// * `#[on(state = S, event = E, next = T)]`: Maps a handler to a specific
+///   state, event trigger, and target state.
+/// * `#[on(state = S, event = E, next = [A, B])]`: Declares dynamic target
+///   states for handlers returning `Transition<StateEnum>`.
 ///
-/// A single handler method cannot combine `#[on(...)]` and `#[on_timeout]`.
-/// Define separate methods for event-driven and timeout-driven transitions.
 /// More than one handler for the same `(state, event)` pair is rejected at
 /// compile time.
 ///
-/// Event and timeout handlers may return:
+/// Event handlers may return:
 ///
-/// * `Transition<Next>`
-/// * `Result<Transition<Next>, Transition<Other>>`
-/// * `Result<Transition<Next>, E>`
+/// * `()`
+/// * `Result<(), E>`
+/// * `Transition<StateEnum>`
+/// * `Result<Transition<StateEnum>, E>`
 ///
 /// # Examples
 ///
 /// ```rust,ignore
-/// use tokio_fsm::{Transition, fsm};
+/// use tokio_fsm::fsm;
 ///
 /// pub struct MyContext;
 ///
@@ -71,15 +68,8 @@ mod validation;
 ///     type Context = MyContext;
 ///     type Error = std::convert::Infallible;
 ///
-///     #[on(state = Idle, event = Start)]
-///     #[state_timeout(duration = "10s")]
-///     async fn on_start(&mut self) -> Transition<Running> {
-///         Transition::to(Running)
-///     }
-///
-///     #[on_timeout]
-///     async fn handle_timeout(&mut self) -> Transition<Idle> {
-///         Transition::to(Idle)
+///     #[on(state = Idle, event = Start, next = Running)]
+///     async fn on_start(&mut self) {
 ///     }
 /// }
 /// ```

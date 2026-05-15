@@ -13,37 +13,24 @@ pub fn render_spawn(fsm: &FsmStructure) -> TokenStream {
     let context_type = &fsm.context_type;
 
     quote! {
-        /// Spawns an unnamed FSM with a fresh cancellation token.
+        /// Spawns an FSM with a fresh cancellation token.
         #[must_use = "FSM task must be retained or it will be aborted immediately"]
         pub fn spawn(context: #context_type) -> (#handle_name, #task_name) {
-            Self::spawn_named_with_token(None, context, ::tokio_fsm::tokio_util::sync::CancellationToken::new())
+            Self::spawn_with_token(context, ::tokio_fsm::tokio_util::sync::CancellationToken::new())
         }
 
-        /// Spawns a named FSM with a fresh cancellation token.
-        #[must_use = "FSM task must be retained or it will be aborted immediately"]
-        pub fn spawn_named(name: &str, context: #context_type) -> (#handle_name, #task_name) {
-            Self::spawn_named_with_token(Some(name.to_string()), context, ::tokio_fsm::tokio_util::sync::CancellationToken::new())
-        }
-
-        /// Spawns an unnamed FSM linked to a parent cancellation token.
+        /// Spawns an FSM linked to a parent cancellation token.
         ///
         /// The generated handle owns a child token, so `handle.shutdown()`
         /// stops the FSM without cancelling the parent token.
         #[must_use = "FSM task must be retained or it will be aborted immediately"]
         pub fn spawn_with_token(context: #context_type, token: ::tokio_fsm::tokio_util::sync::CancellationToken) -> (#handle_name, #task_name) {
-            Self::spawn_named_with_token(None, context, token)
-        }
-
-        /// Spawns a named FSM linked to a parent cancellation token.
-        #[must_use = "FSM task must be retained or it will be aborted immediately"]
-        pub fn spawn_named_with_token(name: Option<String>, context: #context_type, token: ::tokio_fsm::tokio_util::sync::CancellationToken) -> (#handle_name, #task_name) {
             let (event_tx, event_rx) = ::tokio_fsm::tokio::sync::mpsc::channel(#channel_size);
             let (state_tx, state_rx) = ::tokio_fsm::tokio::sync::watch::channel(#state_enum_name::#initial_state);
 
             let fsm = #fsm_name {
                 state: #state_enum_name::#initial_state,
                 context,
-                name: name.clone(),
             };
 
             let child_token = token.child_token();
@@ -55,7 +42,6 @@ pub fn render_spawn(fsm: &FsmStructure) -> TokenStream {
                     event_tx,
                     state_rx,
                     token: handle_token,
-                    name,
                 },
                 #task_name { handle },
             )

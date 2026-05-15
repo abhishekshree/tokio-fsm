@@ -1,36 +1,23 @@
 //! Rendering for the generated event loop.
-//!
-//! The run loop owns:
-//! - event dispatch
-//! - timeout dispatch
-//! - cancellation races
-//! - tracing instrumentation at the outer loop boundary
 
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Error;
 
-use super::helpers::{render_cancellable_call, render_transition_dispatch};
-use crate::validation::FsmStructure;
+use crate::validation::{FsmStructure, HandlerReturnKind};
 
 pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
-    let event_enum_name = fsm.event_enum_ident();
+    let command_enum_name = fsm.command_enum_ident();
     let state_enum_name = fsm.state_enum_ident();
     let context_type = &fsm.context_type;
     let error_type = &fsm.error_type;
     let fsm_name_str = fsm.fsm_name.to_string();
 
     let event_arms = build_event_arms(fsm)?;
-    let event_name_arms = build_event_name_arms(fsm);
-    let timeout_logic = build_timeout_handler(fsm)?;
 
     let tracing_span = if fsm.tracing {
         quote! {
-            let span = ::tokio_fsm::tracing::info_span!(
-                "fsm",
-                name = #fsm_name_str,
-                fsm_id = self.name.as_deref().unwrap_or("unnamed")
-            );
+            let span = ::tokio_fsm::tracing::info_span!("fsm", name = #fsm_name_str);
         }
     } else {
         quote! {}
@@ -55,49 +42,30 @@ pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
         quote! {}
     };
 
-    let unmatched_arm = if fsm.tracing {
-        quote! {
-            (state, event) => {
-                let event_name = match event {
-                    #(#event_name_arms)*
-                };
-                ::tokio_fsm::tracing::warn!(state = ?state, event = event_name, "Event dropped: No handler for this state");
-            }
-        }
-    } else {
-        quote! {
-            (_, _) => {}
-        }
-    };
-
     Ok(quote! {
         async fn run(
             mut self,
-            mut events: ::tokio_fsm::tokio::sync::mpsc::Receiver<#event_enum_name>,
+            mut events: ::tokio_fsm::tokio::sync::mpsc::Receiver<#command_enum_name>,
             token: ::tokio_fsm::tokio_util::sync::CancellationToken,
             state_tx: ::tokio_fsm::tokio::sync::watch::Sender<#state_enum_name>,
         ) -> Result<#context_type, #error_type> {
             #tracing_span
 
             let run_loop = async move {
-                let sleep = ::tokio_fsm::tokio::time::sleep(::tokio_fsm::tokio::time::Duration::from_secs(0));
-                ::tokio_fsm::tokio::pin!(sleep);
-                self.reset_timeout_for_current_state(sleep.as_mut());
-
                 loop {
                     ::tokio_fsm::tokio::select! {
-                        _ = &mut sleep => {
-                            #timeout_logic
-                        }
                         _ = token.cancelled() => {
                             #tracing_cancellation
                             return Ok(self.context);
                         }
-                        event = events.recv() => {
-                            let Some(event) = event else { break };
+                        command = events.recv() => {
+                            let Some(command) = command else { break };
+                            let #command_enum_name::Event { event, reply } = command;
                             match (self.state, event) {
                                 #(#event_arms)*
-                                #unmatched_arm
+                                (state, event) => {
+                                    let _ = reply.send(Err(::tokio_fsm::SendError::Unhandled { state, event }));
+                                }
                             }
                         }
                     }
@@ -111,27 +79,6 @@ pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
     })
 }
 
-fn build_event_name_arms(fsm: &FsmStructure) -> Vec<TokenStream> {
-    let event_enum = fsm.event_enum_ident();
-
-    fsm.events
-        .iter()
-        .map(|event| {
-            let event_name = &event.name;
-            let event_name_str = event_name.to_string();
-            if event.payload_type.is_some() {
-                quote! {
-                    #event_enum::#event_name(_) => #event_name_str,
-                }
-            } else {
-                quote! {
-                    #event_enum::#event_name => #event_name_str,
-                }
-            }
-        })
-        .collect()
-}
-
 fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
     let mut arms = Vec::new();
     let event_enum = fsm.event_enum_ident();
@@ -142,6 +89,12 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
             let event_name = &event.name;
             let event_name_str = event_name.to_string();
             let method_name = &handler.method.sig.ident;
+            let target_state = handler.target_states.first().map(|state| &state.name);
+            let allowed_targets: Vec<_> = handler
+                .target_states
+                .iter()
+                .map(|state| &state.name)
+                .collect();
 
             let (payload_pattern, payload_call) = if handler.has_payload {
                 (quote! { (payload) }, quote! { (payload) })
@@ -149,21 +102,111 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                 (quote! {}, quote! { () })
             };
 
-            let handler_call = render_cancellable_call(quote! {
-                self.#method_name #payload_call
-            });
-
             let return_kind = handler.return_kind.ok_or_else(|| {
                 Error::new_spanned(
                     &handler.method.sig.ident,
                     "Internal macro error: missing parsed return kind for event handler",
                 )
             })?;
-            let arm_inner = render_transition_dispatch(
-                return_kind,
-                handler_call,
-                quote! { Some(#event_name_str) },
-            );
+
+            let arm_inner = match return_kind {
+                HandlerReturnKind::Unit => {
+                    let target_state = target_state.ok_or_else(|| {
+                        Error::new_spanned(
+                            &handler.method.sig.ident,
+                            "Internal macro error: missing target state",
+                        )
+                    })?;
+                    quote! {
+                        ::tokio_fsm::tokio::select! {
+                            _ = token.cancelled() => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                return Ok(self.context);
+                            }
+                            result = self.#method_name #payload_call => result,
+                        };
+                        let state = self.apply_transition(#state_enum::#target_state, &state_tx, #event_name_str);
+                        let _ = reply.send(Ok(state));
+                    }
+                }
+                HandlerReturnKind::ResultUnit => {
+                    let target_state = target_state.ok_or_else(|| {
+                        Error::new_spanned(
+                            &handler.method.sig.ident,
+                            "Internal macro error: missing target state",
+                        )
+                    })?;
+                    quote! {
+                        let result = ::tokio_fsm::tokio::select! {
+                            _ = token.cancelled() => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                return Ok(self.context);
+                            }
+                            result = self.#method_name #payload_call => result,
+                        };
+                        match result {
+                            Ok(()) => {
+                                let state = self.apply_transition(#state_enum::#target_state, &state_tx, #event_name_str);
+                                let _ = reply.send(Ok(state));
+                            }
+                            Err(error) => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::HandlerFailed));
+                                return Err(error);
+                            }
+                        }
+                    }
+                }
+                HandlerReturnKind::Transition => {
+                    quote! {
+                        let transition = ::tokio_fsm::tokio::select! {
+                            _ = token.cancelled() => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                return Ok(self.context);
+                            }
+                            result = self.#method_name #payload_call => result,
+                        };
+                        let next = transition.into_state();
+                        match next {
+                            #(#state_enum::#allowed_targets)|* => {
+                                let state = self.apply_transition(next, &state_tx, #event_name_str);
+                                let _ = reply.send(Ok(state));
+                            }
+                            state => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::InvalidTransition { state }));
+                            }
+                        }
+                    }
+                }
+                HandlerReturnKind::ResultTransitionError => {
+                    quote! {
+                        let result = ::tokio_fsm::tokio::select! {
+                            _ = token.cancelled() => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                return Ok(self.context);
+                            }
+                            result = self.#method_name #payload_call => result,
+                        };
+                        match result {
+                            Ok(transition) => {
+                                let next = transition.into_state();
+                                match next {
+                                    #(#state_enum::#allowed_targets)|* => {
+                                        let state = self.apply_transition(next, &state_tx, #event_name_str);
+                                        let _ = reply.send(Ok(state));
+                                    }
+                                    state => {
+                                        let _ = reply.send(Err(::tokio_fsm::SendError::InvalidTransition { state }));
+                                    }
+                                }
+                            }
+                            Err(error) => {
+                                let _ = reply.send(Err(::tokio_fsm::SendError::HandlerFailed));
+                                return Err(error);
+                            }
+                        }
+                    }
+                }
+            };
 
             for source_state in &handler.source_states {
                 arms.push(quote! {
@@ -176,28 +219,4 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
     }
 
     Ok(arms)
-}
-
-fn build_timeout_handler(fsm: &FsmStructure) -> syn::Result<TokenStream> {
-    if let Some(handler) = fsm.handlers.iter().find(|h| h.is_timeout_handler) {
-        let method_name = &handler.method.sig.ident;
-        let timeout_call = render_cancellable_call(quote! {
-            self.#method_name()
-        });
-
-        let return_kind = handler.return_kind.ok_or_else(|| {
-            Error::new_spanned(
-                &handler.method.sig.ident,
-                "Internal macro error: missing parsed return kind for timeout handler",
-            )
-        })?;
-
-        Ok(render_transition_dispatch(
-            return_kind,
-            timeout_call,
-            quote! { None },
-        ))
-    } else {
-        Ok(quote! {})
-    }
 }

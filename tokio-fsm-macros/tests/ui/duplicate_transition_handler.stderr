@@ -1,5 +1,5 @@
 error: Duplicate handler for state 'Idle' and event 'Start': 'first' and 'second'
-  --> tests/ui/duplicate_transition_handler.rs:14:14
+  --> tests/ui/duplicate_transition_handler.rs:13:14
    |
-14 |     async fn second(&mut self) -> tokio_fsm::Transition<Two> {
+13 |     async fn second(&mut self) {
    |              ^^^^^^

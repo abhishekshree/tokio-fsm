@@ -1,13 +1,5 @@
 error: Duplicate #[on] source state 'Idle' on handler 'on_start'
  --> tests/ui/duplicate_source_state.rs:9:5
   |
-9 |     #[on(state = Idle, event = Start)]
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: unused import: `Transition`
- --> tests/ui/duplicate_source_state.rs:1:17
-  |
-1 | use tokio_fsm::{Transition, fsm};
-  |                 ^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+9 |     #[on(state = Idle, event = Start, next = Running)]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

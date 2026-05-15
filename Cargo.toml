@@ -1,6 +1,6 @@
 [workspace]
 members = [".", "tokio-fsm-macros"]
-exclude = ["examples/axum_fsm", "examples/validation_comparison"]
+exclude = ["examples/axum_fsm"]
 resolver = "2"
 
 [workspace.package]
@@ -55,11 +55,6 @@ serde = ["dep:serde"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
-criterion = { version = "0.8", features = ["async_tokio"] }
-
-[[bench]]
-name = "comparison"
-harness = false
 
 [workspace.metadata.release]
 # versioning

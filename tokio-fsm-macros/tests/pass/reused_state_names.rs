@@ -1,13 +1,12 @@
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::fsm;
 
 #[fsm(initial = Idle)]
 impl FirstFsm {
     type Context = ();
     type Error = std::convert::Infallible;
 
-    #[on(state = Idle, event = Start)]
-    async fn start(&mut self) -> Transition<Done> {
-        Transition::to(Done)
+    #[on(state = Idle, event = Start, next = Done)]
+    async fn start(&mut self) {
     }
 }
 
@@ -16,9 +15,8 @@ impl SecondFsm {
     type Context = ();
     type Error = std::convert::Infallible;
 
-    #[on(state = Idle, event = Start)]
-    async fn start(&mut self) -> Transition<Done> {
-        Transition::to(Done)
+    #[on(state = Idle, event = Start, next = Done)]
+    async fn start(&mut self) {
     }
 }
 

@@ -1,19 +1,17 @@
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::fsm;
 
 #[fsm(initial = Idle)]
 impl MixedEvents {
     type Context = ();
     type Error = ();
 
-    #[on(state = Idle, event = Dummy)]
-    async fn dummy(&mut self) -> Transition<Running> {
-        Transition::to(Running)
+    #[on(state = Idle, event = Dummy, next = Running)]
+    async fn dummy(&mut self) {
     }
 
-    #[on(state = Idle, event = Start)]
-    #[on(state = Running, event = Stop)]
-    async fn start_or_stop(&mut self) -> Transition<Idle> {
-        Transition::to(Idle)
+    #[on(state = Idle, event = Start, next = Idle)]
+    #[on(state = Running, event = Stop, next = Idle)]
+    async fn start_or_stop(&mut self) {
     }
 }
 

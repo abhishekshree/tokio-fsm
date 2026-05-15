@@ -5,14 +5,12 @@ impl DuplicateTransitionFsm {
     type Context = ();
     type Error = std::convert::Infallible;
 
-    #[on(state = Idle, event = Start)]
-    async fn first(&mut self) -> tokio_fsm::Transition<One> {
-        tokio_fsm::Transition::to(One)
+    #[on(state = Idle, event = Start, next = One)]
+    async fn first(&mut self) {
     }
 
-    #[on(state = Idle, event = Start)]
-    async fn second(&mut self) -> tokio_fsm::Transition<Two> {
-        tokio_fsm::Transition::to(Two)
+    #[on(state = Idle, event = Start, next = Two)]
+    async fn second(&mut self) {
     }
 }
 

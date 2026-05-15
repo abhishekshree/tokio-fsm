@@ -1,4 +1,3 @@
-use darling::FromMeta;
 use syn::{Error, FnArg, GenericArgument, ImplItem, ItemImpl, PathArguments, ReturnType, Type};
 
 use super::types::{Event, FsmStructure, Handler, HandlerReturnKind, State};
@@ -15,14 +14,13 @@ impl Handler {
         }
 
         let mut event: Option<Event> = None;
-        let mut is_timeout_handler = false;
-        let mut state_timeout_attr = None;
         let mut source_states = Vec::new();
+        let mut target_states: Vec<State> = Vec::new();
 
         // Parse attributes
         for attr in &method.attrs {
             if attr.path().is_ident("on") {
-                let on_attr: attrs::OnAttr = attrs::OnAttr::from_meta(&attr.meta)?;
+                let on_attr = attrs::OnAttr::parse(attr)?;
                 let payload_type = if method.sig.inputs.len() > 1 {
                     if let FnArg::Typed(pat_type) = &method.sig.inputs[1] {
                         Some((*pat_type.ty).clone())
@@ -59,10 +57,31 @@ impl Handler {
                         payload_type,
                     });
                 }
-            } else if attr.path().is_ident("on_timeout") {
-                is_timeout_handler = true;
-            } else if attr.path().is_ident("state_timeout") {
-                state_timeout_attr = Some(attrs::StateTimeoutAttr::from_meta(&attr.meta)?);
+                if target_states.is_empty() {
+                    target_states = on_attr
+                        .next
+                        .into_iter()
+                        .map(|name| State { name })
+                        .collect();
+                } else {
+                    let next_states: Vec<_> =
+                        on_attr.next.iter().map(ToString::to_string).collect();
+                    let existing_states: Vec<_> = target_states
+                        .iter()
+                        .map(|state| state.name.to_string())
+                        .collect();
+                    if next_states != existing_states {
+                        return Err(Error::new_spanned(
+                            attr,
+                            "Multiple #[on] attributes on one handler must use the same next states",
+                        ));
+                    }
+                }
+            } else if attr.path().is_ident("on_timeout") || attr.path().is_ident("state_timeout") {
+                return Err(Error::new_spanned(
+                    attr,
+                    "timeout attributes were removed; model timeout events explicitly",
+                ));
             }
         }
 
@@ -72,97 +91,79 @@ impl Handler {
             .map(|e| e.payload_type.is_some())
             .unwrap_or(false);
 
-        // Derive: timeout (fail loudly on invalid duration)
-        let timeout = if let Some(ref st) = state_timeout_attr {
-            let duration_str = st.duration.value();
-            let parsed = humantime::parse_duration(&duration_str).map_err(|e| {
-                syn::Error::new_spanned(
-                    &st.duration,
-                    format!("Invalid duration '{}': {}", duration_str, e),
-                )
-            })?;
-            Some(parsed)
+        let return_kind = if event.is_some() {
+            let return_kind = parse_handler_return(&method.sig.output)?;
+            if matches!(
+                return_kind,
+                HandlerReturnKind::Unit | HandlerReturnKind::ResultUnit
+            ) && target_states.len() != 1
+            {
+                return Err(Error::new_spanned(
+                    &method.sig.ident,
+                    "handlers returning () or Result<(), E> must declare exactly one next state",
+                ));
+            }
+            Some(return_kind)
         } else {
             None
         };
 
-        let (return_kind, return_states) = if event.is_some() || is_timeout_handler {
-            parse_handler_return(&method.sig.output)?
-        } else {
-            (None, Vec::new())
-        };
-
-        if event.is_some() && is_timeout_handler {
-            return Err(Error::new_spanned(
-                &method.sig.ident,
-                "Handler cannot use both #[on(...)] and #[on_timeout]; split into separate methods",
-            ));
-        }
-
         Ok(Self {
             method: method.clone(),
             event,
-            is_timeout_handler,
-            return_states,
+            target_states,
             return_kind,
             source_states,
             has_payload,
-            timeout,
         })
     }
 }
 
-fn parse_handler_return(
-    output: &ReturnType,
-) -> syn::Result<(Option<HandlerReturnKind>, Vec<State>)> {
+fn parse_handler_return(output: &ReturnType) -> syn::Result<HandlerReturnKind> {
     let return_type = match output {
         ReturnType::Type(_, ty) => ty.as_ref(),
-        ReturnType::Default => {
-            return Err(Error::new_spanned(
-                output,
-                "FSM handlers must return Transition<NextState> or Result<Transition<NextState>, ...>",
-            ));
-        }
+        ReturnType::Default => return Ok(HandlerReturnKind::Unit),
     };
 
     parse_return_kind(return_type)
 }
 
-fn parse_return_kind(ty: &Type) -> syn::Result<(Option<HandlerReturnKind>, Vec<State>)> {
+fn parse_return_kind(ty: &Type) -> syn::Result<HandlerReturnKind> {
+    if matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty()) {
+        return Ok(HandlerReturnKind::Unit);
+    }
+
     let Type::Path(path) = ty else {
         return Err(Error::new_spanned(
             ty,
-            "FSM handlers must return Transition<NextState> or Result<Transition<NextState>, ...>",
+            "FSM handlers must return (), Result<(), E>, Transition<State>, or Result<Transition<State>, E>",
         ));
     };
     let Some(segment) = path.path.segments.last() else {
         return Err(Error::new_spanned(
             ty,
-            "FSM handlers must return Transition<NextState> or Result<Transition<NextState>, ...>",
+            "FSM handlers must return (), Result<(), E>, Transition<State>, or Result<Transition<State>, E>",
         ));
     };
 
     match segment.ident.to_string().as_str() {
-        "Transition" => Ok((
-            Some(HandlerReturnKind::Transition),
-            vec![extract_transition_state(ty)?],
-        )),
+        "Transition" => {
+            ensure_transition_state(ty)?;
+            Ok(HandlerReturnKind::Transition)
+        }
         "Result" => parse_result_return(segment, ty),
         _ => Err(Error::new_spanned(
             ty,
-            "FSM handlers must return Transition<NextState> or Result<Transition<NextState>, ...>",
+            "FSM handlers must return (), Result<(), E>, Transition<State>, or Result<Transition<State>, E>",
         )),
     }
 }
 
-fn parse_result_return(
-    segment: &syn::PathSegment,
-    ty: &Type,
-) -> syn::Result<(Option<HandlerReturnKind>, Vec<State>)> {
+fn parse_result_return(segment: &syn::PathSegment, ty: &Type) -> syn::Result<HandlerReturnKind> {
     let PathArguments::AngleBracketed(args) = &segment.arguments else {
         return Err(Error::new_spanned(
             ty,
-            "Result handlers must return Result<Transition<NextState>, ...>",
+            "Result handlers must return Result<(), E> or Result<Transition<State>, E>",
         ));
     };
 
@@ -178,40 +179,37 @@ fn parse_result_return(
     if type_args.len() != 2 {
         return Err(Error::new_spanned(
             ty,
-            "Result handlers must return Result<Transition<NextState>, ...>",
+            "Result handlers must return Result<(), E> or Result<Transition<State>, E>",
         ));
     }
 
-    let ok_state = extract_transition_state(type_args[0]).map_err(|_| {
+    if matches!(type_args[0], Type::Tuple(tuple) if tuple.elems.is_empty()) {
+        return Ok(HandlerReturnKind::ResultUnit);
+    }
+
+    ensure_transition_state(type_args[0]).map_err(|_| {
         Error::new_spanned(
             type_args[0],
-            "Result handlers must return Result<Transition<NextState>, ...>",
+            "Result handlers must return Result<(), E> or Result<Transition<State>, E>",
         )
     })?;
-
-    match extract_transition_state(type_args[1]) {
-        Ok(err_state) => Ok((
-            Some(HandlerReturnKind::ResultTransition),
-            vec![ok_state, err_state],
-        )),
-        Err(_) => Ok((Some(HandlerReturnKind::ResultError), vec![ok_state])),
-    }
+    Ok(HandlerReturnKind::ResultTransitionError)
 }
 
-fn extract_transition_state(ty: &Type) -> syn::Result<State> {
+fn ensure_transition_state(ty: &Type) -> syn::Result<()> {
     let Type::Path(path) = ty else {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
+        return Err(Error::new_spanned(ty, "Expected Transition<State>"));
     };
     let Some(segment) = path.path.segments.last() else {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
+        return Err(Error::new_spanned(ty, "Expected Transition<State>"));
     };
 
     if segment.ident != "Transition" {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
+        return Err(Error::new_spanned(ty, "Expected Transition<State>"));
     }
 
     let PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
+        return Err(Error::new_spanned(ty, "Expected Transition<State>"));
     };
 
     let mut type_args = args.args.iter().filter_map(|arg| match arg {
@@ -219,20 +217,13 @@ fn extract_transition_state(ty: &Type) -> syn::Result<State> {
         _ => None,
     });
 
-    let Some(Type::Path(inner_path)) = type_args.next() else {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
+    if type_args.next().is_none() {
+        return Err(Error::new_spanned(ty, "Expected Transition<State>"));
     };
     if type_args.next().is_some() {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
+        return Err(Error::new_spanned(ty, "Expected Transition<State>"));
     }
-
-    let Some(state_seg) = inner_path.path.segments.last() else {
-        return Err(Error::new_spanned(ty, "Expected Transition<NextState>"));
-    };
-
-    Ok(State {
-        name: state_seg.ident.clone(),
-    })
+    Ok(())
 }
 
 impl FsmStructure {
@@ -289,8 +280,8 @@ impl FsmStructure {
             if let ImplItem::Fn(method) = item {
                 let handler = Handler::parse(method)?;
 
-                // Collect states from return types
-                for state in &handler.return_states {
+                // Collect states from declared targets
+                for state in &handler.target_states {
                     if !state_names.iter().any(|s| s == &state.name) {
                         state_names.push(state.name.clone());
                     }

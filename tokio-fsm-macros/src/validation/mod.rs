@@ -25,7 +25,7 @@ impl FsmStructure {
         format_ident!("{}Task", self.fsm_name)
     }
 
-    pub fn state_marker_ident(&self, state: &Ident) -> Ident {
-        format_ident!("__{}{}State", self.fsm_name, state)
+    pub fn command_enum_ident(&self) -> Ident {
+        format_ident!("{}Command", self.fsm_name)
     }
 }

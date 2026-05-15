@@ -1,5 +1,5 @@
 use tokio::time::{Duration, timeout};
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::{SendError, fsm};
 use tokio_util::sync::CancellationToken;
 
 #[fsm(initial = Idle)]
@@ -7,10 +7,8 @@ impl LifecycleFsm {
     type Context = ();
     type Error = std::convert::Infallible;
 
-    #[on(state = Idle, event = Tick)]
-    async fn on_tick(&mut self) -> Transition<Running> {
-        Transition::to(Running)
-    }
+    #[on(state = Idle, event = Tick, next = Running)]
+    async fn on_tick(&mut self) {}
 }
 
 #[tokio::test]
@@ -49,8 +47,13 @@ async fn test_fsm_manual_shutdown() {
     let res = task.await;
     assert!(res.is_ok(), "Task should return Ok on graceful shutdown");
 
-    let res = handle.send(LifecycleFsmEvent::Tick).await;
-    assert!(res.is_err(), "Expected send to fail after shutdown");
+    assert!(
+        matches!(
+            handle.send(LifecycleFsmEvent::Tick).await,
+            Err(SendError::Closed(_))
+        ),
+        "Expected send to fail after shutdown"
+    );
 }
 
 #[tokio::test]
@@ -93,15 +96,14 @@ impl BlockingFsm {
     type Context = BlockingContext;
     type Error = std::convert::Infallible;
 
-    #[on(state = BlockingIdle, event = Run)]
-    async fn on_run(&mut self) -> Transition<BlockingDone> {
+    #[on(state = BlockingIdle, event = Run, next = BlockingDone)]
+    async fn on_run(&mut self) {
         if let Some(started_tx) = self.context.started_tx.take() {
             let _ = started_tx.send(());
         }
 
         tokio::time::sleep(Duration::from_secs(60)).await;
         self.context.completed = true;
-        Transition::to(BlockingDone)
     }
 }
 
@@ -114,11 +116,15 @@ async fn test_shutdown_cancels_long_running_handler_promptly() {
     };
     let (handle, task) = BlockingFsm::spawn(context);
 
-    handle.send(BlockingFsmEvent::Run).await.unwrap();
+    let send = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.send(BlockingFsmEvent::Run).await }
+    });
     started_rx.await.unwrap();
 
     handle.shutdown();
 
+    assert!(matches!(send.await.unwrap(), Err(SendError::Interrupted)));
     let context = tokio::time::timeout(Duration::from_millis(100), task)
         .await
         .expect("shutdown should interrupt a blocked handler")
@@ -135,10 +141,8 @@ impl TracedLifecycleFsm {
     type Context = ();
     type Error = std::convert::Infallible;
 
-    #[on(state = TracedIdle, event = Tick)]
-    async fn on_tick(&mut self) -> Transition<TracedDone> {
-        Transition::to(TracedDone)
-    }
+    #[on(state = TracedIdle, event = Tick, next = TracedDone)]
+    async fn on_tick(&mut self) {}
 }
 
 #[cfg(feature = "tracing")]

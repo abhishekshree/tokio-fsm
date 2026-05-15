@@ -1109,7 +1109,6 @@ name = "tokio-fsm-macros"
 version = "0.4.0"
 dependencies = [
  "darling",
- "humantime",
  "petgraph",
  "proc-macro2",
  "quote",

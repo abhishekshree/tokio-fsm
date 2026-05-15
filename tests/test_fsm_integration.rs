@@ -1,6 +1,4 @@
-use std::time::Duration;
-
-use tokio_fsm::{SendError, Transition, fsm};
+use tokio_fsm::{SendError, fsm};
 
 #[derive(Debug, Default)]
 pub struct TestContext {
@@ -19,32 +17,21 @@ impl IntegrationFsm {
     type Context = TestContext;
     type Error = TestError;
 
-    #[on(state = Idle, event = Start)]
-    #[state_timeout(duration = "100ms")]
-    async fn handle_start(&mut self) -> Transition<Pending> {
+    #[on(state = Idle, event = Start, next = Pending)]
+    async fn handle_start(&mut self) {
         self.context.transition_count += 1;
-        Transition::to(Pending)
     }
 
-    #[on(state = Pending, event = Process)]
-    #[on(state = Active, event = Process)]
-    #[state_timeout(duration = "100ms")]
-    async fn handle_process(&mut self, data: String) -> Transition<Active> {
+    #[on(state = Pending, event = Process, next = Active)]
+    #[on(state = Active, event = Process, next = Active)]
+    async fn handle_process(&mut self, data: String) {
         self.context.transition_count += 1;
         self.context.job_data.push(data);
-        Transition::to(Active)
     }
 
-    #[on(state = Active, event = Finish)]
-    async fn handle_finish(&mut self) -> Transition<Done> {
+    #[on(state = Active, event = Finish, next = Done)]
+    async fn handle_finish(&mut self) {
         self.context.transition_count += 1;
-        Transition::to(Done)
-    }
-
-    #[on_timeout]
-    async fn handle_timeout(&mut self) -> Transition<Failed> {
-        self.context.transition_count += 1;
-        Transition::to(Failed)
     }
 }
 
@@ -56,7 +43,10 @@ async fn test_fsm_full_lifecycle() {
     assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
 
     // Idle -> Pending
-    handle.send(IntegrationFsmEvent::Start).await.unwrap();
+    assert_eq!(
+        handle.send(IntegrationFsmEvent::Start).await.unwrap(),
+        IntegrationFsmState::Pending
+    );
     handle
         .wait_for_state(IntegrationFsmState::Pending)
         .await
@@ -73,7 +63,10 @@ async fn test_fsm_full_lifecycle() {
         .unwrap();
 
     // Active -> Done
-    handle.send(IntegrationFsmEvent::Finish).await.unwrap();
+    assert_eq!(
+        handle.send(IntegrationFsmEvent::Finish).await.unwrap(),
+        IntegrationFsmState::Done
+    );
     handle
         .wait_for_state(IntegrationFsmState::Done)
         .await
@@ -87,39 +80,15 @@ async fn test_fsm_full_lifecycle() {
     assert_eq!(final_context.job_data, vec!["task1"]);
 }
 
-#[tokio::test(start_paused = true)]
-async fn test_fsm_timeout() {
-    let context = TestContext::default();
-    let (handle, task) = IntegrationFsm::spawn(context);
-
-    // Idle -> Pending
-    handle.send(IntegrationFsmEvent::Start).await.unwrap();
-    handle
-        .wait_for_state(IntegrationFsmState::Pending)
-        .await
-        .unwrap();
-
-    // Wait for timeout (100ms)
-    tokio::time::advance(Duration::from_millis(200)).await;
-    handle
-        .wait_for_state(IntegrationFsmState::Failed)
-        .await
-        .unwrap();
-
-    handle.shutdown();
-    let final_context = task.await.unwrap();
-    assert_eq!(final_context.transition_count, 2); // Start + Timeout
-}
-
 #[tokio::test]
 async fn test_fsm_channel_close_shutdown() {
     let context = TestContext::default();
     let (handle, task) = IntegrationFsm::spawn(context);
 
     // Queue up events
-    handle.enqueue(IntegrationFsmEvent::Start).await.unwrap();
+    handle.send(IntegrationFsmEvent::Start).await.unwrap();
     handle
-        .enqueue(IntegrationFsmEvent::Process("queued".to_string()))
+        .send(IntegrationFsmEvent::Process("queued".to_string()))
         .await
         .unwrap();
 
@@ -134,7 +103,7 @@ async fn test_fsm_channel_close_shutdown() {
 }
 
 #[tokio::test]
-async fn test_send_rejects_unhandled_event_without_enqueueing() {
+async fn test_send_rejects_unhandled_event() {
     let context = TestContext::default();
     let (handle, task) = IntegrationFsm::spawn(context);
 
@@ -146,20 +115,6 @@ async fn test_send_rejects_unhandled_event_without_enqueueing() {
         other => panic!("expected send to reject Finish in Idle, got {other:?}"),
     }
 
-    assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
-
-    handle.shutdown();
-    let final_context = task.await.unwrap();
-    assert_eq!(final_context.transition_count, 0);
-    assert!(final_context.job_data.is_empty());
-}
-
-#[tokio::test]
-async fn test_enqueue_preserves_raw_queue_semantics() {
-    let context = TestContext::default();
-    let (handle, task) = IntegrationFsm::spawn(context);
-
-    handle.enqueue(IntegrationFsmEvent::Finish).await.unwrap();
     assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
 
     handle.shutdown();

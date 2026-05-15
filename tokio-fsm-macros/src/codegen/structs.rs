@@ -13,7 +13,6 @@ pub fn render_fsm_struct(fsm: &FsmStructure) -> TokenStream {
         pub struct #fsm_name {
             state: #state_enum_name,
             context: #context_type,
-            name: Option<String>,
         }
     }
 }
@@ -22,15 +21,23 @@ pub fn render_handle_struct(fsm: &FsmStructure) -> TokenStream {
     let handle_name = fsm.handle_ident();
     let event_enum_name = fsm.event_enum_ident();
     let state_enum_name = fsm.state_enum_ident();
+    let command_name = fsm.command_enum_ident();
 
     quote! {
+        #[doc(hidden)]
+        pub enum #command_name {
+            Event {
+                event: #event_enum_name,
+                reply: ::tokio_fsm::tokio::sync::oneshot::Sender<Result<#state_enum_name, ::tokio_fsm::SendError<#event_enum_name, #state_enum_name>>>,
+            },
+        }
+
         /// A handle to the running FSM for event submission and state observation.
         #[derive(Clone)]
         pub struct #handle_name {
-            event_tx: ::tokio_fsm::tokio::sync::mpsc::Sender<#event_enum_name>,
+            event_tx: ::tokio_fsm::tokio::sync::mpsc::Sender<#command_name>,
             state_rx: ::tokio_fsm::tokio::sync::watch::Receiver<#state_enum_name>,
             token: ::tokio_fsm::tokio_util::sync::CancellationToken,
-            name: Option<String>,
         }
     }
 }

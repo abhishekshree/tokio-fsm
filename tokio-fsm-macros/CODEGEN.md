@@ -13,7 +13,8 @@ This crate follows a simple pipeline:
 - `src/validation/parser.rs`
   Use for attribute parsing, handler return-shape parsing, and discovered states/events.
 - `src/validation/graph.rs`
-  Use for graph-level correctness checks such as reachability and timeout consistency.
+  Use for graph-level correctness checks such as reachability and declared
+  transition targets.
 
 ### Type generation
 
@@ -27,22 +28,21 @@ This crate follows a simple pipeline:
 - `src/codegen/impls/spawn.rs`
   Spawn entry points and token ownership.
 - `src/codegen/impls/run.rs`
-  Event loop, timeout loop, cancellation, and tracing instrumentation.
+  Event loop, cancellation, replies to `send`, and tracing instrumentation.
 - `src/codegen/impls/handle.rs`
-  Public handle methods such as `send`, `enqueue`, `try_enqueue`, and
-  `wait_for_state`.
+  Public handle methods such as `send` and `wait_for_state`.
 - `src/codegen/impls/task.rs`
   Task future wrapper and drop behavior.
 - `src/codegen/impls/helpers.rs`
   Small TokenStream builders plus generated private FSM helpers such as
-  transition application and timeout rearming.
+  transition application.
 
 ## Working rules
 
 - Keep parsed semantic branching in codegen.
   Example: `HandlerReturnKind` should stay a codegen decision.
 - Move repetitive generated runtime tails into one generated private helper.
-  Example: state update, watcher send, tracing, and timeout reset.
+  Example: state update, watcher send, and tracing.
 - Prefer small TokenStream builders over one giant helper with too many cases.
 - Split files by responsibility before adding abstraction layers.
 - Avoid traits or larger IR layers unless a new requirement clearly demands them.

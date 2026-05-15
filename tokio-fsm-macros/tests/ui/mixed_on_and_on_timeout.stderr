@@ -1,5 +1,0 @@
-error: Handler cannot use both #[on(...)] and #[on_timeout]; split into separate methods
-  --> tests/ui/mixed_on_and_on_timeout.rs:10:14
-   |
-10 |     async fn mixed_handler(&mut self) -> tokio_fsm::Transition<Idle> {
-   |              ^^^^^^^^^^^^^

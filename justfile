@@ -42,9 +42,3 @@ doc:
 
 run-axum:
     RUSTFLAGS="--cfg tokio_unstable" {{ CARGO }} run --manifest-path examples/axum_fsm/Cargo.toml
-
-compare-validation:
-    @echo "Checking Typestate (should succeed)..."
-    {{ CARGO }} check --manifest-path examples/validation_comparison/Cargo.toml --bin typestate_logic
-    @echo "\nChecking tokio-fsm (should FAIL with reachability error)..."
-    ! {{ CARGO }} check --manifest-path examples/validation_comparison/Cargo.toml --bin fsm_logic

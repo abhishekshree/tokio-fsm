@@ -7,26 +7,6 @@ pub fn render_state_enum(fsm: &FsmStructure) -> TokenStream {
     let states: Vec<_> = fsm.states.iter().map(|s| &s.name).collect();
     let state_enum_name = fsm.state_enum_ident();
 
-    let state_structs: Vec<_> = fsm
-        .states
-        .iter()
-        .map(|s| {
-            let marker_name = fsm.state_marker_ident(&s.name);
-            let state_name = &s.name;
-            let enum_name = &state_enum_name;
-            quote! {
-                #[doc(hidden)]
-                #[derive(Debug, Clone, Copy)]
-                pub struct #marker_name;
-                impl From<#marker_name> for #enum_name {
-                    fn from(_: #marker_name) -> Self {
-                        #enum_name::#state_name
-                    }
-                }
-            }
-        })
-        .collect();
-
     if fsm.serde {
         quote! {
             ::tokio_fsm::__tokio_fsm_serde_derive! {
@@ -35,8 +15,6 @@ pub fn render_state_enum(fsm: &FsmStructure) -> TokenStream {
                     #(#states,)*
                 }
             }
-
-            #(#state_structs)*
         }
     } else {
         quote! {
@@ -44,8 +22,6 @@ pub fn render_state_enum(fsm: &FsmStructure) -> TokenStream {
             pub enum #state_enum_name {
                 #(#states,)*
             }
-
-            #(#state_structs)*
         }
     }
 }

@@ -13,7 +13,7 @@ use tokio::{
     sync::Mutex,
     time::{Duration, sleep},
 };
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::fsm;
 
 // --- DOMAIN TYPES ---
 
@@ -37,42 +37,38 @@ impl OrderFsm {
     type Error = std::convert::Infallible;
 
     // 1. Created -> Validated
-    #[on(state = Created, event = Validate)]
-    async fn handle_validate(&mut self) -> Transition<Validated> {
+    #[on(state = Created, event = Validate, next = Validated)]
+    async fn handle_validate(&mut self) {
         tracing::info!(id = %self.context.order.id, "Validating order...");
         // Simulate validation logic
         sleep(Duration::from_millis(100)).await;
         tracing::debug!(id = %self.context.order.id, "Order validated");
-        Transition::to(Validated)
     }
 
     // 2. Validated -> Charged
-    #[on(state = Validated, event = Charge)]
-    async fn handle_charge(&mut self) -> Transition<Charged> {
+    #[on(state = Validated, event = Charge, next = Charged)]
+    async fn handle_charge(&mut self) {
         tracing::info!(id = %self.context.order.id, "Charging order...");
         // Simulate payment processing
         sleep(Duration::from_millis(200)).await;
         tracing::debug!(id = %self.context.order.id, "Payment successful");
-        Transition::to(Charged)
     }
 
     // 3. Charged -> Shipped
-    #[on(state = Charged, event = Ship)]
-    async fn handle_ship(&mut self) -> Transition<Shipped> {
+    #[on(state = Charged, event = Ship, next = Shipped)]
+    async fn handle_ship(&mut self) {
         tracing::info!(id = %self.context.order.id, "Shipping order...");
         // Simulate shipping logic
         sleep(Duration::from_millis(300)).await;
         tracing::debug!(id = %self.context.order.id, "Order shipped");
-        Transition::to(Shipped)
     }
 
     // Error handling transitions (simplified for demo)
-    #[on(state = Created, event = Error)]
-    #[on(state = Validated, event = Error)]
-    #[on(state = Charged, event = Error)]
-    async fn handle_error(&mut self) -> Transition<Failed> {
+    #[on(state = Created, event = Error, next = Failed)]
+    #[on(state = Validated, event = Error, next = Failed)]
+    #[on(state = Charged, event = Error, next = Failed)]
+    async fn handle_error(&mut self) {
         tracing::error!("Order {} failed", self.context.order.id);
-        Transition::to(Failed)
     }
 }
 
@@ -81,7 +77,7 @@ impl OrderFsm {
 #[derive(Debug)]
 enum AppError {
     NotFound,
-    FsmClosed,
+    FsmRejected,
     AlreadyExists,
 }
 
@@ -89,7 +85,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "Order not found"),
-            AppError::FsmClosed => (StatusCode::GONE, "Order FSM is already closed"),
+            AppError::FsmRejected => (StatusCode::CONFLICT, "Order FSM rejected the event"),
             AppError::AlreadyExists => (StatusCode::CONFLICT, "Order already exists"),
         };
         (status, Json(json!({ "error": message }))).into_response()
@@ -109,7 +105,8 @@ impl AppState {
         }
         .ok_or(AppError::NotFound)?;
 
-        handle.send(event).await.map_err(|_| AppError::FsmClosed)
+        handle.send(event).await.map_err(|_| AppError::FsmRejected)?;
+        Ok(())
     }
 }
 
@@ -133,7 +130,7 @@ async fn create_order(
     };
 
     let context = OrderContext { order };
-    let (handle, task) = OrderFsm::spawn_named(&payload.id, context);
+    let (handle, task) = OrderFsm::spawn(context);
 
     let mut orders = state.orders.lock().await;
     if orders.contains_key(&payload.id) {

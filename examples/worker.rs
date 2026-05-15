@@ -1,7 +1,7 @@
-//! Example: Job worker FSM with timeouts
+//! Example: Job worker FSM
 
 use tokio::time::{Duration, sleep};
-use tokio_fsm::{Transition, fsm};
+use tokio_fsm::fsm;
 
 #[derive(Debug, Clone)]
 pub struct Job {
@@ -35,26 +35,13 @@ impl WorkerFsm {
     type Context = WorkerContext;
     type Error = WorkerError;
 
-    #[on(state = Idle, event = Job)]
-    #[state_timeout(duration = "30s")]
-    async fn handle_job(&mut self, job: Job) -> Result<Transition<Working>, Transition<Failed>> {
-        self.context
-            .db
-            .save(&job)
-            .await
-            .map(|_| Transition::to(Working))
-            .map_err(|_| Transition::to(Failed))
+    #[on(state = Idle, event = Job, next = Working)]
+    async fn handle_job(&mut self, job: Job) -> Result<(), WorkerError> {
+        self.context.db.save(&job).await
     }
 
-    #[on(state = Working, event = Done)]
-    async fn handle_done(&mut self) -> Transition<Idle> {
-        Transition::to(Idle)
-    }
-
-    #[on_timeout]
-    async fn handle_timeout(&mut self) -> Transition<Failed> {
-        Transition::to(Failed)
-    }
+    #[on(state = Working, event = Done, next = Idle)]
+    async fn handle_done(&mut self) {}
 }
 
 #[tokio::main]

@@ -1,9 +1,0 @@
-[package]
-name = "validation_comparison"
-version = "0.1.0"
-edition = "2024"
-
-[workspace]
-
-[dependencies]
-tokio-fsm = { path = "../../" }

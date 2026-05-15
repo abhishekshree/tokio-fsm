@@ -10,10 +10,11 @@
 ///
 /// ```rust
 /// # use tokio_fsm::Transition;
-/// # struct Running;
-/// async fn my_handler() -> Transition<Running> {
+/// # #[derive(Debug, Clone, Copy)]
+/// # enum MyFsmState { Running }
+/// async fn my_handler() -> Transition<MyFsmState> {
 ///     // Perform some async logic...
-///     Transition::to(Running)
+///     Transition::to(MyFsmState::Running)
 /// }
 /// ```
 #[derive(Debug)]
@@ -81,9 +82,9 @@ pub enum TaskError<E> {
 
 /// Error returned by generated `send` handle methods.
 ///
-/// Sending validates the event against the FSM's current observed state before
-/// enqueueing it. This catches events that cannot be handled in the current
-/// state without relying on the background task to drop them later.
+/// Sending resolves only after the FSM task processes the event. This makes
+/// handler failures, invalid dynamic transitions, and interrupted sends visible
+/// to the caller.
 #[derive(Debug, thiserror::Error)]
 pub enum SendError<E, S> {
     /// The event has no handler for the current state.
@@ -97,7 +98,19 @@ pub enum SendError<E, S> {
     /// The FSM event queue is closed.
     #[error("FSM event queue is closed")]
     Closed(
-        /// Event that could not be enqueued.
+        /// Event that could not be sent.
         E,
     ),
+    /// The FSM stopped before it could answer this send request.
+    #[error("FSM stopped before answering send request")]
+    Interrupted,
+    /// The FSM handler failed while processing the event.
+    #[error("FSM handler failed while processing event")]
+    HandlerFailed,
+    /// The handler returned a state that was not declared in its `next` list.
+    #[error("FSM handler returned an undeclared transition target")]
+    InvalidTransition {
+        /// State returned by the handler.
+        state: S,
+    },
 }

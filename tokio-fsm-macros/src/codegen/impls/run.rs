@@ -86,7 +86,7 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
 
     for handler in &fsm.handlers {
         if let Some(ref event) = handler.event {
-            let event_name = &event.name;
+            let event_name = event.name();
             let event_name_str = event_name.to_string();
             let method_name = &handler.method.sig.ident;
             let target_state = handler.target_states.first().map(|state| &state.name);
@@ -96,7 +96,7 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                 .map(|state| &state.name)
                 .collect();
 
-            let (payload_pattern, payload_call) = if handler.has_payload {
+            let (payload_pattern, payload_call) = if event.payload_type().is_some() {
                 (quote! { (payload) }, quote! { (payload) })
             } else {
                 (quote! {}, quote! { () })

@@ -94,10 +94,42 @@ pub struct State {
 }
 
 /// Represents a discovered event in the FSM.
-#[derive(Debug, Clone)]
-pub struct Event {
-    pub name: Ident,
-    pub payload_type: Option<Type>,
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventSpec {
+    Unit { name: EventName },
+    Payload { name: EventName, ty: Box<Type> },
+}
+
+impl EventSpec {
+    pub fn from_parts(name: Ident, payload_type: Option<Type>) -> Self {
+        let name = EventName(name);
+        match payload_type {
+            Some(ty) => Self::Payload {
+                name,
+                ty: Box::new(ty),
+            },
+            None => Self::Unit { name },
+        }
+    }
+
+    pub fn name(&self) -> &Ident {
+        match self {
+            Self::Unit { name } | Self::Payload { name, .. } => name.as_ref(),
+        }
+    }
+
+    pub fn payload_type(&self) -> Option<&Type> {
+        match self {
+            Self::Unit { .. } => None,
+            Self::Payload { ty, .. } => Some(ty),
+        }
+    }
+
+    pub fn payload_description(&self) -> String {
+        self.payload_type()
+            .map(|ty| quote::quote!(#ty).to_string())
+            .unwrap_or_else(|| "None".to_string())
+    }
 }
 
 /// Represents a handler method in the FSM, including all derived semantic
@@ -105,13 +137,11 @@ pub struct Event {
 #[derive(Debug, Clone)]
 pub struct Handler {
     pub method: syn::ImplItemFn,
-    pub event: Option<Event>,
+    pub event: Option<EventSpec>,
     pub target_states: Vec<State>,
     pub return_kind: Option<HandlerReturnKind>,
     /// Source states this handler is valid in.
     pub source_states: Vec<Ident>,
-    /// Whether the event carries a payload argument.
-    pub has_payload: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,7 +161,7 @@ pub struct FsmStructure {
     pub context_type: Type,
     pub error_type: Type,
     pub states: Vec<State>,
-    pub events: Vec<Event>,
+    pub events: Vec<EventSpec>,
     pub handlers: Vec<Handler>,
     pub tracing: bool,
     pub serde: bool,

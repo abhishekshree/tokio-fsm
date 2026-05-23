@@ -31,8 +31,8 @@ pub fn render_event_enum(fsm: &FsmStructure) -> TokenStream {
         .events
         .iter()
         .map(|event| {
-            let event_name = &event.name;
-            if let Some(ref payload_type) = event.payload_type {
+            let event_name = event.name();
+            if let Some(payload_type) = event.payload_type() {
                 quote! { #event_name(#payload_type), }
             } else {
                 quote! { #event_name, }
@@ -44,9 +44,9 @@ pub fn render_event_enum(fsm: &FsmStructure) -> TokenStream {
         .events
         .iter()
         .map(|event| {
-            let event_name = &event.name;
+            let event_name = event.name();
             let event_name_str = event_name.to_string();
-            if event.payload_type.is_some() {
+            if event.payload_type().is_some() {
                 quote! {
                     Self::#event_name(_) => f.write_str(#event_name_str),
                 }

@@ -1,6 +1,6 @@
 use syn::{Error, FnArg, GenericArgument, ImplItem, ItemImpl, PathArguments, ReturnType, Type};
 
-use super::types::{Event, FsmStructure, Handler, HandlerReturnKind, State};
+use super::types::{EventSpec, FsmStructure, Handler, HandlerReturnKind, State};
 use crate::attrs;
 
 impl Handler {
@@ -13,7 +13,7 @@ impl Handler {
             ));
         }
 
-        let mut event: Option<Event> = None;
+        let mut event: Option<EventSpec> = None;
         let mut source_states = Vec::new();
         let mut target_states: Vec<State> = Vec::new();
 
@@ -42,20 +42,19 @@ impl Handler {
                 }
                 source_states.push(on_attr.state);
                 if let Some(ref existing_event) = event {
-                    if existing_event.name != on_attr.event {
+                    if existing_event.name() != &on_attr.event {
                         return Err(Error::new_spanned(
                             &on_attr.event,
                             format!(
                                 "Handler method '{}' handles multiple different events: '{}' and '{}'",
-                                method.sig.ident, existing_event.name, on_attr.event
+                                method.sig.ident,
+                                existing_event.name(),
+                                on_attr.event
                             ),
                         ));
                     }
                 } else {
-                    event = Some(Event {
-                        name: on_attr.event,
-                        payload_type,
-                    });
+                    event = Some(EventSpec::from_parts(on_attr.event, payload_type));
                 }
                 if target_states.is_empty() {
                     target_states = on_attr
@@ -85,12 +84,6 @@ impl Handler {
             }
         }
 
-        // Derive: has_payload
-        let has_payload = event
-            .as_ref()
-            .map(|e| e.payload_type.is_some())
-            .unwrap_or(false);
-
         let return_kind = if event.is_some() {
             let return_kind = parse_handler_return(&method.sig.output)?;
             if matches!(
@@ -114,7 +107,6 @@ impl Handler {
             target_states,
             return_kind,
             source_states,
-            has_payload,
         })
     }
 }
@@ -270,8 +262,7 @@ impl FsmStructure {
 
         // Parse methods
         let mut handlers = Vec::new();
-        let mut event_names: Vec<syn::Ident> = Vec::new();
-        let mut events: Vec<Event> = Vec::new();
+        let mut events: Vec<EventSpec> = Vec::new();
         let mut state_names: Vec<syn::Ident> = Vec::new();
 
         state_names.push(initial_state.clone());
@@ -296,28 +287,24 @@ impl FsmStructure {
 
                 // Collect events and validate payload consistency
                 if let Some(ref event) = handler.event {
-                    if let Some(existing_event) = events.iter().find(|e| e.name == event.name) {
-                        if existing_event.payload_type != event.payload_type {
-                            let expected = existing_event
-                                .payload_type
-                                .as_ref()
-                                .map(|ty| quote::quote!(#ty).to_string())
-                                .unwrap_or_else(|| "None".to_string());
-                            let actual = event
-                                .payload_type
-                                .as_ref()
-                                .map(|ty| quote::quote!(#ty).to_string())
-                                .unwrap_or_else(|| "None".to_string());
+                    if let Some(existing_event) = events
+                        .iter()
+                        .find(|existing| existing.name() == event.name())
+                    {
+                        if existing_event != event {
+                            let expected = existing_event.payload_description();
+                            let actual = event.payload_description();
                             return Err(Error::new_spanned(
-                                &event.name,
+                                event.name(),
                                 format!(
                                     "Event '{}' has inconsistent payload types across handlers: expected '{}', found '{}'",
-                                    event.name, expected, actual
+                                    event.name(),
+                                    expected,
+                                    actual
                                 ),
                             ));
                         }
                     } else {
-                        event_names.push(event.name.clone());
                         events.push(event.clone());
                     }
                 }

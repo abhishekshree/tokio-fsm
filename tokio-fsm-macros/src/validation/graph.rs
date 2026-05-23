@@ -40,13 +40,16 @@ impl FsmStructure {
             };
 
             for source in &handler.source_states {
-                let key = (source.to_string(), event.name.to_string());
+                let key = (source.to_string(), event.name().to_string());
                 if let Some(existing_handler) = handlers_by_transition.get(&key) {
                     return Err(syn::Error::new_spanned(
                         &handler.method.sig.ident,
                         format!(
                             "Duplicate handler for state '{}' and event '{}': '{}' and '{}'",
-                            source, event.name, existing_handler, handler.method.sig.ident
+                            source,
+                            event.name(),
+                            existing_handler,
+                            handler.method.sig.ident
                         ),
                     ));
                 }

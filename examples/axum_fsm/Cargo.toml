@@ -15,5 +15,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-console-subscriber = "0.4"
+console-subscriber = "0.5"
 tower = "0.5"

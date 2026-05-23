@@ -17,6 +17,24 @@ The `justfile` uses `cargo +nightly`. Direct equivalents are still useful, for e
 ## Coding Style & Naming Conventions
 This repo targets Rust 2024. Follow `rustfmt.toml`: grouped imports, crate-granularity import merging, wrapped doc comments, and Unix newlines. Use `snake_case` for modules, files, functions, and test helpers. Use `CamelCase` for types, enums, and generated FSM names such as `WorkerFsm` and `WorkerFsmState`. Keep module boundaries aligned with responsibility, especially in `tokio-fsm-macros/src/codegen/` and `tokio-fsm-macros/src/validation/`.
 
+## Rust Implementation Standards
+When writing or refactoring Rust code in this repository, prefer simple, idiomatic Rust over clever abstractions. Match the existing module boundaries, naming, visibility, and error handling style before introducing a new pattern.
+
+- Use the type system to encode domain invariants when it removes real invalid states or clarifies core FSM logic.
+- Prefer enums, newtypes, and smart constructors for meaningful domain concepts such as states, events, IDs, validated values, modes, and capabilities.
+- Avoid typestate, generics, traits, macros, or phantom types unless they clearly simplify the model or prevent bugs that the current API can realistically allow.
+- Prefer typed errors in library code. Avoid `anyhow` outside binaries, examples, or tests.
+- Avoid `.unwrap()` and `.expect()` in library code unless the invariant is local, obvious, and cannot be expressed cleanly in the type system.
+- Avoid unnecessary clones, allocations, trait objects, and string conversions. Borrow when ownership is not needed.
+- Prefer exhaustive `match` statements for closed sets of states, events, and return kinds.
+- Avoid boolean parameters when an enum would make the call site clearer.
+- Keep functions small enough to read linearly and keep abstraction levels consistent within each function.
+- Keep comments sparse. Add comments only for non-obvious invariants, safety reasoning, generated-code constraints, or behavior that is surprising from the code alone.
+- Do not add comments that merely restate the code.
+- Preserve public API compatibility unless the task explicitly allows breaking changes.
+
+When explaining work, be concrete. State assumptions explicitly, avoid speculation, avoid em dashes, and do not over-explain obvious Rust basics.
+
 ## Testing Guidelines
 Add or update integration tests in `tests/` for runtime behavior and lifecycle changes. Add UI cases in `tokio-fsm-macros/tests/ui/` for compile-time diagnostics, with matching `.stderr` files. Prefer descriptive test names beginning with `test_`. Before opening a PR, run workspace tests and the axum example tests.
 

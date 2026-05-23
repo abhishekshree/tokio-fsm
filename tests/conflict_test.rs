@@ -34,7 +34,7 @@ mod tests {
         let (handle1, _task1) = Fsm1::spawn(Context1);
         let (handle2, _task2) = Fsm2::spawn(Context2);
 
-        let _s1: Fsm1State = handle1.current_state();
-        let _s2: Fsm2State = handle2.current_state();
+        let _s1: Fsm1State = handle1.state();
+        let _s2: Fsm2State = handle2.state();
     }
 }

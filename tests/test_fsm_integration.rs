@@ -1,4 +1,4 @@
-use tokio_fsm::{SendError, fsm};
+use tokio_fsm::{ApplyError, fsm};
 
 #[derive(Debug, Default)]
 pub struct TestContext {
@@ -40,11 +40,11 @@ async fn test_fsm_full_lifecycle() {
     let context = TestContext::default();
     let (handle, task) = IntegrationFsm::spawn(context);
 
-    assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
+    assert_eq!(handle.state(), IntegrationFsmState::Idle);
 
     // Idle -> Pending
     assert_eq!(
-        handle.send(IntegrationFsmEvent::Start).await.unwrap(),
+        handle.apply(IntegrationFsmEvent::Start).await.unwrap(),
         IntegrationFsmState::Pending
     );
     handle
@@ -54,7 +54,7 @@ async fn test_fsm_full_lifecycle() {
 
     // Pending -> Active (with data)
     handle
-        .send(IntegrationFsmEvent::Process("task1".to_string()))
+        .apply(IntegrationFsmEvent::Process("task1".to_string()))
         .await
         .unwrap();
     handle
@@ -64,7 +64,7 @@ async fn test_fsm_full_lifecycle() {
 
     // Active -> Done
     assert_eq!(
-        handle.send(IntegrationFsmEvent::Finish).await.unwrap(),
+        handle.apply(IntegrationFsmEvent::Finish).await.unwrap(),
         IntegrationFsmState::Done
     );
     handle
@@ -85,14 +85,14 @@ async fn test_fsm_channel_close_shutdown() {
     let context = TestContext::default();
     let (handle, task) = IntegrationFsm::spawn(context);
 
-    // Queue up events
-    handle.send(IntegrationFsmEvent::Start).await.unwrap();
+    // Apply events before closing the handle.
+    handle.apply(IntegrationFsmEvent::Start).await.unwrap();
     handle
-        .send(IntegrationFsmEvent::Process("queued".to_string()))
+        .apply(IntegrationFsmEvent::Process("queued".to_string()))
         .await
         .unwrap();
 
-    // Close the last sender by dropping the handle.
+    // Close the last handle.
     drop(handle);
 
     let final_context = task.await.unwrap();
@@ -103,22 +103,62 @@ async fn test_fsm_channel_close_shutdown() {
 }
 
 #[tokio::test]
-async fn test_send_rejects_unhandled_event() {
+async fn test_apply_rejects_unhandled_event() {
     let context = TestContext::default();
     let (handle, task) = IntegrationFsm::spawn(context);
 
-    match handle.send(IntegrationFsmEvent::Finish).await {
-        Err(SendError::Unhandled {
+    match handle.apply(IntegrationFsmEvent::Finish).await {
+        Err(ApplyError::Unhandled {
             state: IntegrationFsmState::Idle,
             event: IntegrationFsmEvent::Finish,
         }) => {}
-        other => panic!("expected send to reject Finish in Idle, got {other:?}"),
+        other => panic!("expected apply to reject Finish in Idle, got {other:?}"),
     }
 
-    assert_eq!(handle.current_state(), IntegrationFsmState::Idle);
+    assert_eq!(handle.state(), IntegrationFsmState::Idle);
 
     handle.shutdown();
     let final_context = task.await.unwrap();
     assert_eq!(final_context.transition_count, 0);
     assert!(final_context.job_data.is_empty());
+}
+
+#[tokio::test]
+async fn test_direct_apply_full_lifecycle() {
+    let mut fsm = IntegrationFsm::new(TestContext::default());
+
+    assert_eq!(fsm.state(), IntegrationFsmState::Idle);
+
+    assert_eq!(
+        fsm.apply(IntegrationFsmEvent::Start).await.unwrap(),
+        IntegrationFsmState::Pending
+    );
+    assert_eq!(fsm.context().transition_count, 1);
+
+    assert_eq!(
+        fsm.apply(IntegrationFsmEvent::Process("direct".to_string()))
+            .await
+            .unwrap(),
+        IntegrationFsmState::Active
+    );
+
+    let context = fsm.into_context();
+    assert_eq!(context.transition_count, 2);
+    assert_eq!(context.job_data, vec!["direct"]);
+}
+
+#[tokio::test]
+async fn test_direct_apply_rejects_unhandled_event() {
+    let mut fsm = IntegrationFsm::new(TestContext::default());
+
+    match fsm.apply(IntegrationFsmEvent::Finish).await {
+        Err(ApplyError::Unhandled {
+            state: IntegrationFsmState::Idle,
+            event: IntegrationFsmEvent::Finish,
+        }) => {}
+        other => panic!("expected apply to reject Finish in Idle, got {other:?}"),
+    }
+
+    assert_eq!(fsm.state(), IntegrationFsmState::Idle);
+    assert_eq!(fsm.context().transition_count, 0);
 }

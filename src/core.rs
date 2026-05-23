@@ -80,29 +80,30 @@ pub enum TaskError<E> {
     Join(#[from] tokio::task::JoinError),
 }
 
-/// Error returned by generated `send` handle methods.
+/// Error returned when applying an event to an FSM.
 ///
-/// Sending resolves only after the FSM task processes the event. This makes
-/// handler failures, invalid dynamic transitions, and interrupted sends visible
-/// to the caller.
+/// For direct FSM values, applying an event resolves when the handler has run
+/// and the state transition has either succeeded or failed. For spawned FSM
+/// handles, applying an event also reports runtime-adapter failures such as a
+/// closed event channel or an interrupted in-flight request.
 #[derive(Debug, thiserror::Error)]
-pub enum SendError<E, S> {
+pub enum ApplyError<E, S> {
     /// The event has no handler for the current state.
     #[error("event is not handled in the current FSM state")]
     Unhandled {
-        /// State observed when the send was attempted.
+        /// State observed when the event was applied.
         state: S,
         /// Event that was rejected.
         event: E,
     },
-    /// The FSM event queue is closed.
-    #[error("FSM event queue is closed")]
+    /// The spawned FSM runtime is closed.
+    #[error("FSM runtime is closed")]
     Closed(
-        /// Event that could not be sent.
+        /// Event that could not be applied.
         E,
     ),
-    /// The FSM stopped before it could answer this send request.
-    #[error("FSM stopped before answering send request")]
+    /// The FSM stopped before it could answer this apply request.
+    #[error("FSM stopped before answering apply request")]
     Interrupted,
     /// The FSM handler failed while processing the event.
     #[error("FSM handler failed while processing event")]

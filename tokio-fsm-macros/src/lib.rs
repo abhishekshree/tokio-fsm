@@ -32,8 +32,8 @@ mod validation;
 /// * `WorkerFsmState`: An enum containing all discovered states.
 /// * `WorkerFsmEvent`: An enum containing all discovered events and their data
 ///   payloads.
-/// * `WorkerFsmHandle`: A cloneable handle used to interact with the FSM (send
-///   events, query state).
+/// * `WorkerFsmHandle`: A cloneable spawned-runtime handle used to interact
+///   with the FSM (apply events, query state).
 /// * `WorkerFsmTask`: A [`Future`](std::future::Future) that must be awaited to
 ///   run the FSM. Resolves to `Result<Context, TaskError<E>>`.
 ///

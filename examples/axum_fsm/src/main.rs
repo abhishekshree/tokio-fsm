@@ -98,14 +98,14 @@ struct AppState {
 }
 
 impl AppState {
-    async fn send_event(&self, id: &str, event: OrderFsmEvent) -> Result<(), AppError> {
+    async fn apply_event(&self, id: &str, event: OrderFsmEvent) -> Result<(), AppError> {
         let handle = {
             let orders = self.orders.lock().await;
             orders.get(id).map(|(h, _)| h.clone())
         }
         .ok_or(AppError::NotFound)?;
 
-        handle.send(event).await.map_err(|_| AppError::FsmRejected)?;
+        handle.apply(event).await.map_err(|_| AppError::FsmRejected)?;
         Ok(())
     }
 }
@@ -148,10 +148,10 @@ async fn validate_order(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {
-    state.send_event(&id, OrderFsmEvent::Validate).await?;
+    state.apply_event(&id, OrderFsmEvent::Validate).await?;
     Ok((
         StatusCode::OK,
-        Json(json!({ "status": "Validation started" })),
+        Json(json!({ "status": "Validation completed" })),
     ))
 }
 
@@ -159,10 +159,10 @@ async fn charge_order(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {
-    state.send_event(&id, OrderFsmEvent::Charge).await?;
+    state.apply_event(&id, OrderFsmEvent::Charge).await?;
     Ok((
         StatusCode::OK,
-        Json(json!({ "status": "Charging started" })),
+        Json(json!({ "status": "Charging completed" })),
     ))
 }
 
@@ -170,10 +170,10 @@ async fn ship_order(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, AppError> {
-    state.send_event(&id, OrderFsmEvent::Ship).await?;
+    state.apply_event(&id, OrderFsmEvent::Ship).await?;
     Ok((
         StatusCode::OK,
-        Json(json!({ "status": "Shipping started" })),
+        Json(json!({ "status": "Shipping completed" })),
     ))
 }
 
@@ -183,7 +183,7 @@ async fn get_order_status(
 ) -> Result<impl IntoResponse, AppError> {
     let orders = state.orders.lock().await;
     let (handle, _) = orders.get(&id).ok_or(AppError::NotFound)?;
-    let state = handle.current_state();
+    let state = handle.state();
     Ok((StatusCode::OK, Json(json!({ "state": state }))))
 }
 

@@ -5,13 +5,13 @@
 [![CI](https://github.com/abhishekshree/tokio-fsm/actions/workflows/ci.yml/badge.svg)](https://github.com/abhishekshree/tokio-fsm/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Compile-time validated, actor-style async finite state machines for [Tokio](https://tokio.rs).
+Compile-time validated async finite state machines for [Tokio](https://tokio.rs).
 
-`tokio-fsm` turns a standard Rust `impl` block into a Tokio-driven state machine with generated state/event types, a handle API, lifecycle management, and compile-time graph validation. It removes the boilerplate of manual event loops and channel management while keeping handler behavior explicit Rust code.
+`tokio-fsm` turns a standard Rust `impl` block into a state machine with generated state/event types, direct event application, an optional Tokio runtime adapter, lifecycle management, and compile-time graph validation. It removes transition boilerplate while keeping handler behavior explicit Rust code.
 
 ## Why tokio-fsm?
 
-- **Actor-Style Runtime**: Generates a Tokio task backed by bounded `mpsc` events, `watch` state observation, cancellation, and a direct `match`-based dispatcher.
+- **FSM-First API**: Apply events directly to an owned FSM, or use a spawned Tokio adapter when shared handles and state observation are useful.
 - **Async First**: All handlers are native `async fn` methods.
 - **Compile-Time Safety**: Validates state reachability and transition contracts during compilation using `petgraph`.
 - **Deterministic Lifecycle**: Explicit ownership model via a `Task` handle that ensures resources are cleaned up if the caller drops the FSM.
@@ -43,11 +43,18 @@ impl MyFsm {
 
 #[tokio::main]
 async fn main() {
+    // Direct ownership has no queue or background task.
+    let mut fsm = MyFsm::new(MyContext::default());
+    let state = fsm.apply(MyFsmEvent::Start).await.unwrap();
+    assert_eq!(state, MyFsmState::Running);
+    let context = fsm.into_context();
+    assert_eq!(context.count, 1);
+
     // Spawning returns a Handle and a Task. The Task must be awaited or held.
     let (handle, task) = MyFsm::spawn(MyContext::default());
 
-    // Send resolves when the FSM processes the event.
-    let state = handle.send(MyFsmEvent::Start).await.unwrap();
+    // Apply resolves when the FSM processes the event.
+    let state = handle.apply(MyFsmEvent::Start).await.unwrap();
     assert_eq!(state, MyFsmState::Running);
     
     // Observer state changes
@@ -66,9 +73,10 @@ For an `impl` named `MyFsm`, the macro generates:
 
 | Type | Description |
 |------|-------------|
+| `MyFsm` | The FSM value, with `new`, `state`, `context`, `context_mut`, `into_context`, and direct `apply`. |
 | `MyFsmState` | An enum of all discovered states. |
 | `MyFsmEvent` | An enum of all discovered events and their payloads. |
-| `MyFsmHandle` | A cloneable handle for sending events and querying state. |
+| `MyFsmHandle` | A cloneable spawned-runtime handle for applying events and querying state. |
 | `MyFsmTask` | A `Future` that drives the FSM. Resolves to `Result<Context, TaskError<E>>`. |
 
 ## Handler Return Types
@@ -77,14 +85,16 @@ Handlers are `async fn` methods that define how the machine moves between states
 
 - `()`: A simple infallible transition to the declared `next` state.
 - `Result<(), E>`: A fallible transition to the declared `next` state.
+- `Transition<MyFsmState>`: An infallible dynamic transition across states
+  listed in `next = [A, B]`.
 - `Result<Transition<MyFsmState>, E>`: Dynamic branching across states listed in `next = [A, B]`.
 
 ## Lifecycle and Ownership
 
 - **Task Drop**: If you drop the `MyFsmTask` handle, the FSM is aborted immediately. Spawning is marked `#[must_use]` to prevent accidental leaks.
-- **Handle Drop**: When the last `MyFsmHandle` is dropped, the internal event channel is closed. The FSM will exit after processing any remaining queued events.
+- **Handle Drop**: When the last `MyFsmHandle` is dropped, the internal event channel is closed. The spawned FSM exits after processing any received events.
 - **Shutdown**: Call `handle.shutdown()` to cancel the FSM's child token, then `await` the task to retrieve the final context. Cancellation can interrupt an in-flight handler future.
-- **Ordered Sends**: `send` queues one event and resolves after the FSM processes it. If the processed state has no handler for that event, `send` returns `SendError::Unhandled`.
+- **Event Application**: `apply` resolves after the FSM processes the event. If the processed state has no handler for that event, it returns `ApplyError::Unhandled`.
 
 ## Configuration and Attributes
 

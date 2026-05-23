@@ -28,11 +28,11 @@ pub fn render_handle_struct(fsm: &FsmStructure) -> TokenStream {
         pub enum #command_name {
             Event {
                 event: #event_enum_name,
-                reply: ::tokio_fsm::tokio::sync::oneshot::Sender<Result<#state_enum_name, ::tokio_fsm::SendError<#event_enum_name, #state_enum_name>>>,
+                reply: ::tokio_fsm::tokio::sync::oneshot::Sender<Result<#state_enum_name, ::tokio_fsm::ApplyError<#event_enum_name, #state_enum_name>>>,
             },
         }
 
-        /// A handle to the running FSM for event submission and state observation.
+        /// A handle to the running FSM for event application and state observation.
         #[derive(Clone)]
         pub struct #handle_name {
             event_tx: ::tokio_fsm::tokio::sync::mpsc::Sender<#command_name>,

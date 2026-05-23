@@ -64,7 +64,7 @@ pub fn render_run(fsm: &FsmStructure) -> syn::Result<TokenStream> {
                             match (self.state, event) {
                                 #(#event_arms)*
                                 (state, event) => {
-                                    let _ = reply.send(Err(::tokio_fsm::SendError::Unhandled { state, event }));
+                                    let _ = reply.send(Err(::tokio_fsm::ApplyError::Unhandled { state, event }));
                                 }
                             }
                         }
@@ -120,12 +120,12 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     quote! {
                         ::tokio_fsm::tokio::select! {
                             _ = token.cancelled() => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::Interrupted));
                                 return Ok(self.context);
-                            }
+                                }
                             result = self.#method_name #payload_call => result,
                         };
-                        let state = self.apply_transition(#state_enum::#target_state, &state_tx, #event_name_str);
+                        let state = self.apply_transition_and_notify(#state_enum::#target_state, &state_tx, #event_name_str);
                         let _ = reply.send(Ok(state));
                     }
                 }
@@ -139,18 +139,18 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     quote! {
                         let result = ::tokio_fsm::tokio::select! {
                             _ = token.cancelled() => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::Interrupted));
                                 return Ok(self.context);
                             }
                             result = self.#method_name #payload_call => result,
                         };
                         match result {
                             Ok(()) => {
-                                let state = self.apply_transition(#state_enum::#target_state, &state_tx, #event_name_str);
+                                let state = self.apply_transition_and_notify(#state_enum::#target_state, &state_tx, #event_name_str);
                                 let _ = reply.send(Ok(state));
                             }
                             Err(error) => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::HandlerFailed));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::HandlerFailed));
                                 return Err(error);
                             }
                         }
@@ -160,7 +160,7 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     quote! {
                         let transition = ::tokio_fsm::tokio::select! {
                             _ = token.cancelled() => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::Interrupted));
                                 return Ok(self.context);
                             }
                             result = self.#method_name #payload_call => result,
@@ -168,11 +168,11 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                         let next = transition.into_state();
                         match next {
                             #(#state_enum::#allowed_targets)|* => {
-                                let state = self.apply_transition(next, &state_tx, #event_name_str);
+                                let state = self.apply_transition_and_notify(next, &state_tx, #event_name_str);
                                 let _ = reply.send(Ok(state));
                             }
                             state => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::InvalidTransition { state }));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::InvalidTransition { state }));
                             }
                         }
                     }
@@ -181,7 +181,7 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     quote! {
                         let result = ::tokio_fsm::tokio::select! {
                             _ = token.cancelled() => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::Interrupted));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::Interrupted));
                                 return Ok(self.context);
                             }
                             result = self.#method_name #payload_call => result,
@@ -191,16 +191,16 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                                 let next = transition.into_state();
                                 match next {
                                     #(#state_enum::#allowed_targets)|* => {
-                                        let state = self.apply_transition(next, &state_tx, #event_name_str);
+                                        let state = self.apply_transition_and_notify(next, &state_tx, #event_name_str);
                                         let _ = reply.send(Ok(state));
                                     }
                                     state => {
-                                        let _ = reply.send(Err(::tokio_fsm::SendError::InvalidTransition { state }));
+                                        let _ = reply.send(Err(::tokio_fsm::ApplyError::InvalidTransition { state }));
                                     }
                                 }
                             }
                             Err(error) => {
-                                let _ = reply.send(Err(::tokio_fsm::SendError::HandlerFailed));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::HandlerFailed));
                                 return Err(error);
                             }
                         }

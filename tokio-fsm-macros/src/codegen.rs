@@ -34,7 +34,7 @@ pub fn generate(fsm: &FsmStructure, original_impl: &ItemImpl) -> syn::Result<Tok
     // Generate implementations
     let spawn_impl = impls::render_spawn(fsm);
     let run_impl = impls::render_run(fsm)?;
-    let fsm_private_impl = impls::render_fsm_private_helpers(fsm);
+    let fsm_private_impl = impls::render_fsm_private_helpers(fsm)?;
     let handle_impl = impls::render_handle_impl(fsm);
     let task_impl = impls::render_task_impl(fsm);
     let task_drop = impls::render_task_drop(fsm);

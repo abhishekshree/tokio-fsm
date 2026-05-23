@@ -1,5 +1,5 @@
 mod error_propagation {
-    use tokio_fsm::{SendError, TaskError, fsm};
+    use tokio_fsm::{ApplyError, TaskError, fsm};
 
     #[derive(Debug, thiserror::Error)]
     pub enum HandlerError {
@@ -23,12 +23,12 @@ mod error_propagation {
     }
 
     #[tokio::test]
-    async fn test_fsm_handler_error_propagates_to_sender_and_task() {
+    async fn test_fsm_handler_error_propagates_to_caller_and_task() {
         let (handle, task) = ErrorPropagationFsm::spawn(());
 
         assert!(matches!(
-            handle.send(ErrorPropagationFsmEvent::Start(true)).await,
-            Err(SendError::HandlerFailed)
+            handle.apply(ErrorPropagationFsmEvent::Start(true)).await,
+            Err(ApplyError::HandlerFailed)
         ));
 
         match task.await {
@@ -67,7 +67,7 @@ mod dynamic_transition {
 
         assert_eq!(
             handle
-                .send(DynamicTransitionFsmEvent::Start(true))
+                .apply(DynamicTransitionFsmEvent::Start(true))
                 .await
                 .unwrap(),
             DynamicTransitionFsmState::Failed
@@ -81,7 +81,7 @@ mod dynamic_transition {
 mod invalid_dynamic_transition {
     use std::convert::Infallible;
 
-    use tokio_fsm::{SendError, Transition, fsm};
+    use tokio_fsm::{ApplyError, Transition, fsm};
 
     #[fsm(initial = Idle)]
     impl InvalidDynamicTransitionFsm {
@@ -105,15 +105,12 @@ mod invalid_dynamic_transition {
         let _ = InvalidDynamicTransitionFsmEvent::Reset;
 
         assert!(matches!(
-            handle.send(InvalidDynamicTransitionFsmEvent::Start).await,
-            Err(SendError::InvalidTransition {
+            handle.apply(InvalidDynamicTransitionFsmEvent::Start).await,
+            Err(ApplyError::InvalidTransition {
                 state: InvalidDynamicTransitionFsmState::Other,
             })
         ));
-        assert_eq!(
-            handle.current_state(),
-            InvalidDynamicTransitionFsmState::Idle
-        );
+        assert_eq!(handle.state(), InvalidDynamicTransitionFsmState::Idle);
 
         handle.shutdown();
         task.await.unwrap();

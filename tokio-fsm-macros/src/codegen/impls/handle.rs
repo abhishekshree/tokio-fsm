@@ -11,20 +11,20 @@ pub fn render_handle_impl(fsm: &FsmStructure) -> TokenStream {
 
     quote! {
         impl #handle_name {
-            /// Sends an event and waits until the FSM processes it.
-            pub async fn send(&self, event: #event_enum_name) -> Result<#state_enum_name, ::tokio_fsm::SendError<#event_enum_name, #state_enum_name>> {
+            /// Applies an event and waits until the FSM processes it.
+            pub async fn apply(&self, event: #event_enum_name) -> Result<#state_enum_name, ::tokio_fsm::ApplyError<#event_enum_name, #state_enum_name>> {
                 let (reply, response) = ::tokio_fsm::tokio::sync::oneshot::channel();
                 self.event_tx
                     .send(#command_name::Event { event, reply })
                     .await
                     .map_err(|error| match error.0 {
-                        #command_name::Event { event, .. } => ::tokio_fsm::SendError::Closed(event),
+                        #command_name::Event { event, .. } => ::tokio_fsm::ApplyError::Closed(event),
                     })?;
-                response.await.map_err(|_| ::tokio_fsm::SendError::Interrupted)?
+                response.await.map_err(|_| ::tokio_fsm::ApplyError::Interrupted)?
             }
 
             /// Returns the current state of the FSM.
-            pub fn current_state(&self) -> #state_enum_name {
+            pub fn state(&self) -> #state_enum_name {
                 *self.state_rx.borrow()
             }
 

@@ -54,13 +54,13 @@ async fn main() {
         id: 1,
         data: "test".to_string(),
     };
-    handle.send(WorkerFsmEvent::Job(job)).await.unwrap();
+    handle.apply(WorkerFsmEvent::Job(job)).await.unwrap();
 
     // Wait a bit
     sleep(Duration::from_millis(100)).await;
 
     // Send done event
-    handle.send(WorkerFsmEvent::Done).await.unwrap();
+    handle.apply(WorkerFsmEvent::Done).await.unwrap();
 
     // Shutdown cooperatively and wait for the final context
     handle.shutdown();

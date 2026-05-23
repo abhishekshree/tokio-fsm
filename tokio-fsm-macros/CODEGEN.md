@@ -28,9 +28,9 @@ This crate follows a simple pipeline:
 - `src/codegen/impls/spawn.rs`
   Spawn entry points and token ownership.
 - `src/codegen/impls/run.rs`
-  Event loop, cancellation, replies to `send`, and tracing instrumentation.
+  Event loop, cancellation, replies to spawned `apply`, and tracing instrumentation.
 - `src/codegen/impls/handle.rs`
-  Public handle methods such as `send` and `wait_for_state`.
+  Public spawned-runtime handle methods such as `apply` and `wait_for_state`.
 - `src/codegen/impls/task.rs`
   Task future wrapper and drop behavior.
 - `src/codegen/impls/helpers.rs`
@@ -42,7 +42,7 @@ This crate follows a simple pipeline:
 - Keep parsed semantic branching in codegen.
   Example: `HandlerReturnKind` should stay a codegen decision.
 - Move repetitive generated runtime tails into one generated private helper.
-  Example: state update, watcher send, and tracing.
+  Example: state update, watch notification, and tracing.
 - Prefer small TokenStream builders over one giant helper with too many cases.
 - Split files by responsibility before adding abstraction layers.
 - Avoid traits or larger IR layers unless a new requirement clearly demands them.

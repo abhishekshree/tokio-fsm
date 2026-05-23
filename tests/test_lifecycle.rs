@@ -1,5 +1,5 @@
 use tokio::time::{Duration, timeout};
-use tokio_fsm::{SendError, fsm};
+use tokio_fsm::{ApplyError, fsm};
 use tokio_util::sync::CancellationToken;
 
 #[fsm(initial = Idle)]
@@ -15,8 +15,8 @@ impl LifecycleFsm {
 async fn test_fsm_abort_on_drop() {
     let (handle, task) = LifecycleFsm::spawn(());
 
-    // Send event to ensure it's running
-    handle.send(LifecycleFsmEvent::Tick).await.unwrap();
+    // Apply an event to ensure it's running.
+    handle.apply(LifecycleFsmEvent::Tick).await.unwrap();
     handle
         .wait_for_state(LifecycleFsmState::Running)
         .await
@@ -25,17 +25,17 @@ async fn test_fsm_abort_on_drop() {
     // Drop the task handle - this should abort the FSM
     drop(task);
 
-    // Poll until send fails to avoid scheduler-sensitive fixed sleeps.
+    // Poll until applying fails to avoid scheduler-sensitive fixed sleeps.
     timeout(Duration::from_millis(200), async {
         loop {
-            if handle.send(LifecycleFsmEvent::Tick).await.is_err() {
+            if handle.apply(LifecycleFsmEvent::Tick).await.is_err() {
                 break;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("expected send to fail shortly after task drop");
+    .expect("expected apply to fail shortly after task drop");
 }
 
 #[tokio::test]
@@ -49,10 +49,10 @@ async fn test_fsm_manual_shutdown() {
 
     assert!(
         matches!(
-            handle.send(LifecycleFsmEvent::Tick).await,
-            Err(SendError::Closed(_))
+            handle.apply(LifecycleFsmEvent::Tick).await,
+            Err(ApplyError::Closed(_))
         ),
-        "Expected send to fail after shutdown"
+        "Expected apply to fail after shutdown"
     );
 }
 
@@ -116,15 +116,15 @@ async fn test_shutdown_cancels_long_running_handler_promptly() {
     };
     let (handle, task) = BlockingFsm::spawn(context);
 
-    let send = tokio::spawn({
+    let apply = tokio::spawn({
         let handle = handle.clone();
-        async move { handle.send(BlockingFsmEvent::Run).await }
+        async move { handle.apply(BlockingFsmEvent::Run).await }
     });
     started_rx.await.unwrap();
 
     handle.shutdown();
 
-    assert!(matches!(send.await.unwrap(), Err(SendError::Interrupted)));
+    assert!(matches!(apply.await.unwrap(), Err(ApplyError::Interrupted)));
     let context = tokio::time::timeout(Duration::from_millis(100), task)
         .await
         .expect("shutdown should interrupt a blocked handler")
@@ -150,7 +150,7 @@ impl TracedLifecycleFsm {
 async fn test_tracing_enabled_fsm_runs() {
     let (handle, task) = TracedLifecycleFsm::spawn(());
 
-    handle.send(TracedLifecycleFsmEvent::Tick).await.unwrap();
+    handle.apply(TracedLifecycleFsmEvent::Tick).await.unwrap();
     handle
         .wait_for_state(TracedLifecycleFsmState::TracedDone)
         .await

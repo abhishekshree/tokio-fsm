@@ -1,6 +1,8 @@
 use syn::{Error, FnArg, GenericArgument, ImplItem, ItemImpl, PathArguments, ReturnType, Type};
 
-use super::types::{EventSpec, FsmStructure, Handler, HandlerReturnKind, State};
+use super::types::{
+    EventSpec, FsmStructure, Handler, HandlerReturnKind, State, StateName, TransitionTargets,
+};
 use crate::attrs;
 
 impl Handler {
@@ -15,7 +17,7 @@ impl Handler {
 
         let mut event: Option<EventSpec> = None;
         let mut source_states = Vec::new();
-        let mut target_states: Vec<State> = Vec::new();
+        let mut target_names: Option<Vec<StateName>> = None;
 
         // Parse attributes
         for attr in &method.attrs {
@@ -56,18 +58,12 @@ impl Handler {
                 } else {
                     event = Some(EventSpec::from_parts(on_attr.event, payload_type));
                 }
-                if target_states.is_empty() {
-                    target_states = on_attr
-                        .next
-                        .into_iter()
-                        .map(|name| State { name })
-                        .collect();
-                } else {
+                if let Some(existing_targets) = &target_names {
                     let next_states: Vec<_> =
                         on_attr.next.iter().map(ToString::to_string).collect();
-                    let existing_states: Vec<_> = target_states
+                    let existing_states: Vec<_> = existing_targets
                         .iter()
-                        .map(|state| state.name.to_string())
+                        .map(|state| state.as_ref().to_string())
                         .collect();
                     if next_states != existing_states {
                         return Err(Error::new_spanned(
@@ -75,6 +71,8 @@ impl Handler {
                             "Multiple #[on] attributes on one handler must use the same next states",
                         ));
                     }
+                } else {
+                    target_names = Some(on_attr.next.into_iter().map(StateName::from).collect());
                 }
             } else if attr.path().is_ident("on_timeout") || attr.path().is_ident("state_timeout") {
                 return Err(Error::new_spanned(
@@ -84,30 +82,55 @@ impl Handler {
             }
         }
 
-        let return_kind = if event.is_some() {
+        let (targets, return_kind) = if event.is_some() {
             let return_kind = parse_handler_return(&method.sig.output)?;
-            if matches!(
-                return_kind,
-                HandlerReturnKind::Unit | HandlerReturnKind::ResultUnit
-            ) && target_states.len() != 1
-            {
-                return Err(Error::new_spanned(
+            let target_names = target_names.ok_or_else(|| {
+                Error::new_spanned(
                     &method.sig.ident,
-                    "handlers returning () or Result<(), E> must declare exactly one next state",
-                ));
-            }
-            Some(return_kind)
+                    "Internal macro error: missing parsed target states for event handler",
+                )
+            })?;
+            let targets = parse_transition_targets(return_kind, target_names, &method.sig.ident)?;
+            (Some(targets), Some(return_kind))
         } else {
-            None
+            (None, None)
         };
 
         Ok(Self {
             method: method.clone(),
             event,
-            target_states,
+            targets,
             return_kind,
             source_states,
         })
+    }
+}
+
+fn parse_transition_targets(
+    return_kind: HandlerReturnKind,
+    target_names: Vec<StateName>,
+    method_name: &syn::Ident,
+) -> syn::Result<TransitionTargets> {
+    match return_kind {
+        HandlerReturnKind::Unit | HandlerReturnKind::ResultUnit => {
+            let mut targets = target_names.into_iter();
+            let Some(target) = targets.next() else {
+                return Err(Error::new_spanned(
+                    method_name,
+                    "handlers returning () or Result<(), E> must declare exactly one next state",
+                ));
+            };
+            if targets.next().is_some() {
+                return Err(Error::new_spanned(
+                    method_name,
+                    "handlers returning () or Result<(), E> must declare exactly one next state",
+                ));
+            }
+            Ok(TransitionTargets::Static(target))
+        }
+        HandlerReturnKind::Transition | HandlerReturnKind::ResultTransitionError => {
+            Ok(TransitionTargets::Dynamic(target_names))
+        }
     }
 }
 
@@ -272,9 +295,12 @@ impl FsmStructure {
                 let handler = Handler::parse(method)?;
 
                 // Collect states from declared targets
-                for state in &handler.target_states {
-                    if !state_names.iter().any(|s| s == &state.name) {
-                        state_names.push(state.name.clone());
+                if let Some(targets) = &handler.targets {
+                    for state in targets.states() {
+                        let state = state.as_ref();
+                        if !state_names.iter().any(|s| s == state) {
+                            state_names.push(state.clone());
+                        }
                     }
                 }
 

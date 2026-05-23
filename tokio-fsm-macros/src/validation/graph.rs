@@ -66,10 +66,15 @@ impl FsmStructure {
         nodes: &HashMap<&Ident, NodeIndex>,
     ) -> syn::Result<()> {
         for handler in &self.handlers {
-            for target in &handler.target_states {
-                let target_node = nodes.get(&target.name).ok_or_else(|| {
-                    syn::Error::new_spanned(&target.name, "Target state not found")
-                })?;
+            let Some(targets) = &handler.targets else {
+                continue;
+            };
+
+            for target in targets.states() {
+                let target = target.as_ref();
+                let target_node = nodes
+                    .get(target)
+                    .ok_or_else(|| syn::Error::new_spanned(target, "Target state not found"))?;
 
                 for source_ident in &handler.source_states {
                     let source_node = nodes.get(source_ident).ok_or_else(|| {

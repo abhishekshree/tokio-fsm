@@ -100,12 +100,12 @@ fn build_apply_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
             let event_name = event.name();
             let event_name_str = event_name.to_string();
             let method_name = &handler.method.sig.ident;
-            let target_state = handler.target_states.first().map(|state| &state.name);
-            let allowed_targets: Vec<_> = handler
-                .target_states
-                .iter()
-                .map(|state| &state.name)
-                .collect();
+            let targets = handler.targets.as_ref().ok_or_else(|| {
+                Error::new_spanned(
+                    &handler.method.sig.ident,
+                    "Internal macro error: missing parsed targets for event handler",
+                )
+            })?;
 
             let (payload_pattern, payload_call) = if event.payload_type().is_some() {
                 (quote! { (payload) }, quote! { (payload) })
@@ -122,24 +122,26 @@ fn build_apply_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
 
             let arm_inner = match return_kind {
                 HandlerReturnKind::Unit => {
-                    let target_state = target_state.ok_or_else(|| {
+                    let target_state = targets.static_target().ok_or_else(|| {
                         Error::new_spanned(
                             &handler.method.sig.ident,
-                            "Internal macro error: missing target state",
+                            "Internal macro error: expected static target",
                         )
                     })?;
+                    let target_state = target_state.as_ref();
                     quote! {
                         self.#method_name #payload_call.await;
                         Ok(self.apply_transition(#state_enum::#target_state, #event_name_str))
                     }
                 }
                 HandlerReturnKind::ResultUnit => {
-                    let target_state = target_state.ok_or_else(|| {
+                    let target_state = targets.static_target().ok_or_else(|| {
                         Error::new_spanned(
                             &handler.method.sig.ident,
-                            "Internal macro error: missing target state",
+                            "Internal macro error: expected static target",
                         )
                     })?;
+                    let target_state = target_state.as_ref();
                     quote! {
                         match self.#method_name #payload_call.await {
                             Ok(()) => Ok(self.apply_transition(#state_enum::#target_state, #event_name_str)),
@@ -148,6 +150,14 @@ fn build_apply_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     }
                 }
                 HandlerReturnKind::Transition => {
+                    let allowed_targets = targets.dynamic_targets().ok_or_else(|| {
+                        Error::new_spanned(
+                            &handler.method.sig.ident,
+                            "Internal macro error: expected dynamic targets",
+                        )
+                    })?;
+                    let allowed_targets: Vec<_> =
+                        allowed_targets.iter().map(|state| state.as_ref()).collect();
                     quote! {
                         let next = self.#method_name #payload_call.await.into_state();
                         match next {
@@ -157,6 +167,14 @@ fn build_apply_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     }
                 }
                 HandlerReturnKind::ResultTransitionError => {
+                    let allowed_targets = targets.dynamic_targets().ok_or_else(|| {
+                        Error::new_spanned(
+                            &handler.method.sig.ident,
+                            "Internal macro error: expected dynamic targets",
+                        )
+                    })?;
+                    let allowed_targets: Vec<_> =
+                        allowed_targets.iter().map(|state| state.as_ref()).collect();
                     quote! {
                         match self.#method_name #payload_call.await {
                             Ok(transition) => {

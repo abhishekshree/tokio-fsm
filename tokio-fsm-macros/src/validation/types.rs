@@ -132,13 +132,42 @@ impl EventSpec {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransitionTargets {
+    Static(StateName),
+    Dynamic(Vec<StateName>),
+}
+
+impl TransitionTargets {
+    pub fn states(&self) -> &[StateName] {
+        match self {
+            Self::Static(target) => std::slice::from_ref(target),
+            Self::Dynamic(targets) => targets,
+        }
+    }
+
+    pub fn static_target(&self) -> Option<&StateName> {
+        match self {
+            Self::Static(target) => Some(target),
+            Self::Dynamic(_) => None,
+        }
+    }
+
+    pub fn dynamic_targets(&self) -> Option<&[StateName]> {
+        match self {
+            Self::Static(_) => None,
+            Self::Dynamic(targets) => Some(targets),
+        }
+    }
+}
+
 /// Represents a handler method in the FSM, including all derived semantic
 /// fields.
 #[derive(Debug, Clone)]
 pub struct Handler {
     pub method: syn::ImplItemFn,
     pub event: Option<EventSpec>,
-    pub target_states: Vec<State>,
+    pub targets: Option<TransitionTargets>,
     pub return_kind: Option<HandlerReturnKind>,
     /// Source states this handler is valid in.
     pub source_states: Vec<Ident>,

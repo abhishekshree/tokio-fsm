@@ -24,7 +24,7 @@ impl Database {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum WorkerError {
     #[error("Database error: {0}")]
     DatabaseError(String),

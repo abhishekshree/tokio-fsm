@@ -8,11 +8,12 @@ pub fn render_handle_impl(fsm: &FsmStructure) -> TokenStream {
     let event_enum_name = fsm.event_enum_ident();
     let state_enum_name = fsm.state_enum_ident();
     let command_name = fsm.command_enum_ident();
+    let error_type = &fsm.error_type;
 
     quote! {
         impl #handle_name {
             /// Applies an event and waits until the FSM processes it.
-            pub async fn apply(&self, event: #event_enum_name) -> Result<#state_enum_name, ::tokio_fsm::ApplyError<#event_enum_name, #state_enum_name>> {
+            pub async fn apply(&self, event: #event_enum_name) -> Result<#state_enum_name, ::tokio_fsm::ApplyError<#event_enum_name, #state_enum_name, #error_type>> {
                 let (reply, response) = ::tokio_fsm::tokio::sync::oneshot::channel();
                 self.event_tx
                     .send(#command_name::Event { event, reply })

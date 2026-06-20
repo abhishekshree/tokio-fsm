@@ -11,6 +11,7 @@ pub fn render_fsm_private_helpers(fsm: &FsmStructure) -> syn::Result<TokenStream
     let state_enum_name = fsm.state_enum_ident();
     let event_enum_name = fsm.event_enum_ident();
     let context_type = &fsm.context_type;
+    let error_type = &fsm.error_type;
     let initial_state = &fsm.initial_state;
     let apply_arms = build_apply_arms(fsm)?;
 
@@ -59,7 +60,7 @@ pub fn render_fsm_private_helpers(fsm: &FsmStructure) -> syn::Result<TokenStream
         }
 
         /// Applies an event directly to this FSM.
-        pub async fn apply(&mut self, event: #event_enum_name) -> Result<#state_enum_name, ::tokio_fsm::ApplyError<#event_enum_name, #state_enum_name>> {
+        pub async fn apply(&mut self, event: #event_enum_name) -> Result<#state_enum_name, ::tokio_fsm::ApplyError<#event_enum_name, #state_enum_name, #error_type>> {
             match (self.state, event) {
                 #(#apply_arms)*
                 (state, event) => Err(::tokio_fsm::ApplyError::Unhandled { state, event }),
@@ -145,7 +146,7 @@ fn build_apply_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                     quote! {
                         match self.#method_name #payload_call.await {
                             Ok(()) => Ok(self.apply_transition(#state_enum::#target_state, #event_name_str)),
-                            Err(_error) => Err(::tokio_fsm::ApplyError::HandlerFailed),
+                            Err(error) => Err(::tokio_fsm::ApplyError::HandlerFailed(error)),
                         }
                     }
                 }
@@ -184,7 +185,7 @@ fn build_apply_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                                     state => Err(::tokio_fsm::ApplyError::InvalidTransition { state }),
                                 }
                             }
-                            Err(_error) => Err(::tokio_fsm::ApplyError::HandlerFailed),
+                            Err(error) => Err(::tokio_fsm::ApplyError::HandlerFailed(error)),
                         }
                     }
                 }

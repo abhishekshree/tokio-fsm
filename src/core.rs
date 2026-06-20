@@ -86,8 +86,15 @@ pub enum TaskError<E> {
 /// and the state transition has either succeeded or failed. For spawned FSM
 /// handles, applying an event also reports runtime-adapter failures such as a
 /// closed event channel or an interrupted in-flight request.
+///
+/// # Type Parameters
+///
+/// * `E`: The event type generated for the FSM.
+/// * `S`: The state type generated for the FSM.
+/// * `H`: The logical error type defined in your `impl` block via `type Error =
+///   ...;`.
 #[derive(Debug, thiserror::Error)]
-pub enum ApplyError<E, S> {
+pub enum ApplyError<E, S, H> {
     /// The event has no handler for the current state.
     #[error("event is not handled in the current FSM state")]
     Unhandled {
@@ -106,8 +113,8 @@ pub enum ApplyError<E, S> {
     #[error("FSM stopped before answering apply request")]
     Interrupted,
     /// The FSM handler failed while processing the event.
-    #[error("FSM handler failed while processing event")]
-    HandlerFailed,
+    #[error("FSM handler failed while processing event: {0}")]
+    HandlerFailed(H),
     /// The handler returned a state that was not declared in its `next` list.
     #[error("FSM handler returned an undeclared transition target")]
     InvalidTransition {

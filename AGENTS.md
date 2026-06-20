@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`tokio-fsm` is a Rust workspace with two main crates. Runtime types live in `src/` (`core.rs`, `lib.rs`), while the proc-macro implementation lives in `tokio-fsm-macros/src/` with parsing, validation, and code generation split by responsibility. Integration tests live in `tests/`. Compile-fail macro coverage uses `tokio-fsm-macros/tests/ui/` plus the `trybuild` harness in `tokio-fsm-macros/tests/trybuild.rs`. Benchmarks live in `benches/`, and runnable examples live in `examples/`, including the separate `examples/axum_fsm` crate.
+`tokio-fsm` is a Rust workspace with two main crates. Runtime types live in `src/` (`core.rs`, `lib.rs`), while the proc-macro implementation lives in `tokio-fsm-macros/src/` with parsing, validation, and code generation split by responsibility. Integration tests live in `tests/`. Compile-fail macro coverage uses `tokio-fsm-macros/tests/ui/` plus the `trybuild` harness in `tokio-fsm-macros/tests/trybuild.rs`. Runnable examples live in `examples/`, including the separate `examples/axum_fsm` crate.
 
 ## Build, Test, and Development Commands
 Prefer the `justfile` for standard workflows:

@@ -152,7 +152,7 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                                 let _ = reply.send(Ok(state));
                             }
                             Err(error) => {
-                                let _ = reply.send(Err(::tokio_fsm::ApplyError::HandlerFailed));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::HandlerFailed(error.clone())));
                                 return Err(error);
                             }
                         }
@@ -218,7 +218,7 @@ fn build_event_arms(fsm: &FsmStructure) -> syn::Result<Vec<TokenStream>> {
                                 }
                             }
                             Err(error) => {
-                                let _ = reply.send(Err(::tokio_fsm::ApplyError::HandlerFailed));
+                                let _ = reply.send(Err(::tokio_fsm::ApplyError::HandlerFailed(error.clone())));
                                 return Err(error);
                             }
                         }

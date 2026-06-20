@@ -1,7 +1,7 @@
 mod error_propagation {
     use tokio_fsm::{ApplyError, TaskError, fsm};
 
-    #[derive(Debug, thiserror::Error)]
+    #[derive(Clone, Debug, thiserror::Error)]
     pub enum HandlerError {
         #[error("boom")]
         Boom,
@@ -28,13 +28,23 @@ mod error_propagation {
 
         assert!(matches!(
             handle.apply(ErrorPropagationFsmEvent::Start(true)).await,
-            Err(ApplyError::HandlerFailed)
+            Err(ApplyError::HandlerFailed(HandlerError::Boom))
         ));
 
         match task.await {
             Err(TaskError::Fsm(HandlerError::Boom)) => {}
             other => panic!("expected TaskError::Fsm(HandlerError::Boom), got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_direct_apply_handler_error_propagates_to_caller() {
+        let mut fsm = ErrorPropagationFsm::new(());
+
+        assert!(matches!(
+            fsm.apply(ErrorPropagationFsmEvent::Start(true)).await,
+            Err(ApplyError::HandlerFailed(HandlerError::Boom))
+        ));
     }
 }
 

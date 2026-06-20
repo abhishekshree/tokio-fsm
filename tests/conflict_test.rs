@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use tokio_fsm::fsm;
@@ -36,5 +35,7 @@ mod tests {
 
         let _s1: Fsm1State = handle1.state();
         let _s2: Fsm2State = handle2.state();
+        let _ = Fsm1Event::Start;
+        let _ = Fsm2Event::Start;
     }
 }

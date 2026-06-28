@@ -3,6 +3,7 @@
 mod graph;
 mod parser;
 mod types;
+mod validator;
 
 use quote::format_ident;
 use syn::Ident;

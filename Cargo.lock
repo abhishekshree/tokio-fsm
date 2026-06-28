@@ -517,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "tokio-fsm"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "serde",
  "thiserror",
@@ -529,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "tokio-fsm-macros"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "darling",
  "proc-macro2",

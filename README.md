@@ -105,8 +105,13 @@ Handlers are `async fn` methods that define how the machine moves between states
 
 ## Graph Validation & Safety
 
-`tokio-fsm` validates reachability and transition contracts at compile time, so declared states and event handlers stay aligned as the workflow evolves.
+`tokio-fsm` validates your state machine at compile time to guarantee semantic correctness. If the graph violates these rules, compilation will fail:
 
+1. **Initial State Validity**: The declared `initial` state must exist.
+2. **Deterministic Handlers**: Multiple handlers for the exact same `(State, Event)` pair are rejected.
+3. **Graph Reachability**: Every declared state must be reachable from the `initial` state.
+
+Refer to the property test refer to the design here at the [validator design](tokio-fsm-macros/src/validation/validator.md)
 ## Examples
 
 For a full implementation showing Axum integration, multiple FSM instances, and error handling, see the [Axum Order Processing Example](examples/axum_fsm).

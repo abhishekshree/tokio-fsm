@@ -19,7 +19,7 @@ jobs:
       RUSTFLAGS: "-D warnings"
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.CARGO_ASSIST_TOKEN || secrets.GITHUB_TOKEN }}
